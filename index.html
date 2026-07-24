@@ -279,7 +279,11 @@
     </div>
     <div class="stat-card">
       <div class="value" id="currentZoneLabel">--</div>
-      <div class="label">目前時段</div>
+      <div class="label" id="currentZoneSubLabel">目前時段</div>
+    </div>
+    <div class="stat-card">
+      <div class="value" id="nextZoneLabel">--</div>
+      <div class="label">下一個時段</div>
     </div>
   </div>
 
@@ -422,6 +426,15 @@
     return zones.find((z) => hourFloat >= z.start && hourFloat < z.end);
   }
 
+  // 找出下一個即將開始的時段:依 start 時間排序後,找第一個 start 大於目前時間的時段
+  // 如果今天已經沒有更晚的時段了,就繞回明天最早的那個
+  function findNextZone(hourFloat) {
+    if (zones.length === 0) return null;
+    const sorted = [...zones].sort((a, b) => a.start - b.start);
+    const upcoming = sorted.find((z) => z.start > hourFloat);
+    return upcoming || sorted[0];
+  }
+
   function tick() {
     const now = new Date();
     const h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
@@ -446,7 +459,23 @@
     document.getElementById("timeLeft").textContent = `${rh}:${rm}:${rs}`;
 
     const currentZone = findCurrentZone(hourFloat);
-    document.getElementById("currentZoneLabel").textContent = currentZone ? currentZone.name : "--";
+    if (currentZone) {
+      const remainMinutes = (currentZone.end - hourFloat) * 60;
+      let countdownText;
+      if (remainMinutes >= 60) {
+        countdownText = Math.floor(remainMinutes / 60) + " 小時";
+      } else {
+        countdownText = Math.max(1, Math.round(remainMinutes)) + " 分鐘";
+      }
+      document.getElementById("currentZoneLabel").textContent = currentZone.name;
+      document.getElementById("currentZoneSubLabel").textContent = countdownText + " 後結束";
+    } else {
+      document.getElementById("currentZoneLabel").textContent = "--";
+      document.getElementById("currentZoneSubLabel").textContent = "目前時段";
+    }
+
+    const nextZone = findNextZone(hourFloat);
+    document.getElementById("nextZoneLabel").textContent = nextZone ? nextZone.name : "--";
   }
 
   function hourToTimeStr(hourFloat) {
