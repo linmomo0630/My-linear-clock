@@ -407,10 +407,11 @@
     hourTicks.innerHTML = "";
     const stepHours = tickIntervalMin / 60;
     for (let h = 0; h <= 24 + 1e-6; h += stepHours) {
-      const span = document.createElement("span");
       const hh = Math.floor(h) % 24;
       const mm = Math.round((h - Math.floor(h)) * 60);
-      span.textContent = String(hh).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
+      if (mm !== 0) continue; // 刻度單位小於1小時時,只在整點放文字,避免同一小時重複顯示
+      const span = document.createElement("span");
+      span.textContent = String(hh).padStart(2, "0");
       span.style.left = (Math.min(h, 24) / 24 * 100) + "%";
       hourTicks.appendChild(span);
     }
