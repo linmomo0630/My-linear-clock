@@ -233,6 +233,8 @@
   }
   .btn:hover { border-color: var(--accent); color: var(--accent); }
   .btn.danger:hover { border-color: #f87171; color: #f87171; }
+  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn:disabled:hover { border-color: var(--border); color: var(--fg); }
 
   .zone-row {
     display: flex;
@@ -247,6 +249,20 @@
   .zone-row input[type="time"] { font-size: 0.72rem; padding: 4px 5px; }
   .zone-row input[type="color"] { width: 30px; height: 26px; }
   #addZoneBtn { margin-top: 10px; width: 100%; }
+
+  /* ===== 範本管理(精簡版:選單+小按鈕並排) ===== */
+  .template-label { display: block; font-size: 0.85rem; color: var(--fg); margin-bottom: 8px; }
+  .template-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .template-controls select { flex: 1 1 100px; min-width: 90px; }
+  .icon-btn {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
 </style>
 </head>
 <body>
@@ -315,7 +331,18 @@
     </div>
 
     <div class="drawer-section">
-      <h3>管理時段</h3>
+      <h3>範本</h3>
+      <label for="templateSelect" class="template-label">目前使用</label>
+      <div class="template-controls">
+        <select id="templateSelect"></select>
+        <button class="btn icon-btn" id="renameTemplateBtn" title="重新命名">✎</button>
+        <button class="btn icon-btn" id="addTemplateBtn" title="新增範本">+</button>
+        <button class="btn danger icon-btn" id="deleteTemplateBtn" title="刪除範本">✕</button>
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <h3>管理時段 · <span id="editingTemplateName">平日</span></h3>
       <div id="zoneList"></div>
       <button class="btn" id="addZoneBtn">+ 新增時段</button>
     </div>
@@ -323,27 +350,62 @@
 
 <script>
   // ===== 預設值 =====
-  const DEFAULT_ZONES = [
-    { name: "睡眠",   start: 0,  end: 6,  color: "#3b4560" },
-    { name: "晨間準備", start: 6,  end: 9,  color: "#ffb454" },
-    { name: "工作",   start: 9,  end: 18, color: "#4cc2ff" },
-    { name: "晚間",   start: 18, end: 24, color: "#b892ff" },
+  const DEFAULT_TEMPLATES = [
+    {
+      id: "weekday",
+      name: "平日",
+      zones: [
+        { name: "睡眠",   start: 0,  end: 6,  color: "#3b4560" },
+        { name: "晨間準備", start: 6,  end: 9,  color: "#ffb454" },
+        { name: "工作",   start: 9,  end: 18, color: "#4cc2ff" },
+        { name: "晚間",   start: 18, end: 24, color: "#b892ff" },
+      ],
+    },
+    {
+      id: "weekend",
+      name: "假日",
+      zones: [
+        { name: "睡眠",   start: 0,  end: 8,  color: "#3b4560" },
+        { name: "悠閒早晨", start: 8,  end: 11, color: "#ffb454" },
+        { name: "自由時間", start: 11, end: 22, color: "#4cc2ff" },
+        { name: "夜晚",   start: 22, end: 24, color: "#b892ff" },
+      ],
+    },
   ];
   const DEFAULT_ACCENT = "#8b7bff";
   const DEFAULT_TICK_MIN = 180;
 
-  const LS_ZONES = "myClock_zones";
+  const LS_TEMPLATES = "myClock_templates";
+  const LS_ACTIVE_TEMPLATE = "myClock_activeTemplateId";
+  const LS_ZONES = "myClock_zones"; // 舊版單一時段設定,僅用於遷移
   const LS_ACCENT = "myClock_accent";
   const LS_TICK = "myClock_tickIntervalMin";
 
-  let zones = [];
+  let templates = [];
+  let activeTemplateId = null; // 使用者當天手動選擇的範本,同時也是目前編輯的對象
   let tickIntervalMin = DEFAULT_TICK_MIN;
 
   function loadState() {
     try {
-      const rawZones = localStorage.getItem(LS_ZONES);
-      zones = rawZones ? JSON.parse(rawZones) : JSON.parse(JSON.stringify(DEFAULT_ZONES));
-    } catch { zones = JSON.parse(JSON.stringify(DEFAULT_ZONES)); }
+      const rawTemplates = localStorage.getItem(LS_TEMPLATES);
+      if (rawTemplates) {
+        templates = JSON.parse(rawTemplates);
+      } else {
+        // 沒有範本資料時,嘗試從舊版單一時段設定遷移,避免使用者原本的設定消失
+        const rawZones = localStorage.getItem(LS_ZONES);
+        if (rawZones) {
+          templates = [{ id: "default", name: "我的排程", zones: JSON.parse(rawZones) }];
+        } else {
+          templates = JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
+        }
+      }
+    } catch { templates = JSON.parse(JSON.stringify(DEFAULT_TEMPLATES)); }
+    if (!Array.isArray(templates) || templates.length === 0) {
+      templates = JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
+    }
+
+    const savedActiveId = localStorage.getItem(LS_ACTIVE_TEMPLATE);
+    activeTemplateId = templates.some((t) => t.id === savedActiveId) ? savedActiveId : templates[0].id;
 
     const accent = localStorage.getItem(LS_ACCENT) || DEFAULT_ACCENT;
     applyAccent(accent);
@@ -352,9 +414,15 @@
     tickIntervalMin = parseInt(localStorage.getItem(LS_TICK), 10) || DEFAULT_TICK_MIN;
     document.getElementById("tickIntervalSelect").value = String(tickIntervalMin);
   }
-  function saveZones() { localStorage.setItem(LS_ZONES, JSON.stringify(zones)); }
+  function saveTemplates() { localStorage.setItem(LS_TEMPLATES, JSON.stringify(templates)); }
+  function saveActiveTemplate() { localStorage.setItem(LS_ACTIVE_TEMPLATE, activeTemplateId); }
   function saveAccent(hex) { localStorage.setItem(LS_ACCENT, hex); }
   function saveTickInterval() { localStorage.setItem(LS_TICK, String(tickIntervalMin)); }
+
+  // 使用者當天選擇的範本,同時是時鐘顯示的來源與時段編輯的對象
+  function getCurrentTemplate() {
+    return templates.find((t) => t.id === activeTemplateId) || templates[0];
+  }
 
   function hexToRgba(hex, alpha) {
     const r = parseInt(hex.slice(1, 3), 16);
@@ -375,7 +443,8 @@
   function renderZonesAndLegend() {
     track.querySelectorAll(".zone").forEach((el) => el.remove());
     legend.innerHTML = "";
-    zones.forEach((z) => {
+    const displayZones = getCurrentTemplate().zones;
+    displayZones.forEach((z) => {
       const el = document.createElement("div");
       el.className = "zone";
       el.style.left = (z.start / 24 * 100) + "%";
@@ -423,14 +492,15 @@
   }
 
   function findCurrentZone(hourFloat) {
-    return zones.find((z) => hourFloat >= z.start && hourFloat < z.end);
+    return getCurrentTemplate().zones.find((z) => hourFloat >= z.start && hourFloat < z.end);
   }
 
   // 找出下一個即將開始的時段:依 start 時間排序後,找第一個 start 大於目前時間的時段
   // 如果今天已經沒有更晚的時段了,就繞回明天最早的那個
   function findNextZone(hourFloat) {
-    if (zones.length === 0) return null;
-    const sorted = [...zones].sort((a, b) => a.start - b.start);
+    const displayZones = getCurrentTemplate().zones;
+    if (displayZones.length === 0) return null;
+    const sorted = [...displayZones].sort((a, b) => a.start - b.start);
     const upcoming = sorted.find((z) => z.start > hourFloat);
     return upcoming || sorted[0];
   }
@@ -492,7 +562,8 @@
 
   function renderZoneEditor() {
     zoneList.innerHTML = "";
-    zones.forEach((z, idx) => {
+    const editingZones = getCurrentTemplate().zones;
+    editingZones.forEach((z, idx) => {
       const row = document.createElement("div");
       row.className = "zone-row";
       row.innerHTML = `
@@ -507,11 +578,11 @@
       row.querySelectorAll("input").forEach((input) => {
         input.addEventListener("change", () => {
           const field = input.dataset.field;
-          if (field === "name") zones[idx].name = input.value.trim() || "未命名時段";
-          if (field === "start") zones[idx].start = timeStrToHour(input.value);
-          if (field === "end") zones[idx].end = timeStrToHour(input.value);
-          if (field === "color") zones[idx].color = input.value;
-          saveZones();
+          if (field === "name") editingZones[idx].name = input.value.trim() || "未命名時段";
+          if (field === "start") editingZones[idx].start = timeStrToHour(input.value);
+          if (field === "end") editingZones[idx].end = timeStrToHour(input.value);
+          if (field === "color") editingZones[idx].color = input.value;
+          saveTemplates();
           renderZonesAndLegend();
           renderTrackTicks();
           tick();
@@ -519,8 +590,8 @@
       });
 
       row.querySelector('[data-action="delete"]').addEventListener("click", () => {
-        zones.splice(idx, 1);
-        saveZones();
+        editingZones.splice(idx, 1);
+        saveTemplates();
         renderZoneEditor();
         renderZonesAndLegend();
         renderTrackTicks();
@@ -532,8 +603,79 @@
   }
 
   document.getElementById("addZoneBtn").addEventListener("click", () => {
-    zones.push({ name: "新時段", start: 12, end: 13, color: "#4cc2ff" });
-    saveZones();
+    getCurrentTemplate().zones.push({ name: "新時段", start: 12, end: 13, color: "#4cc2ff" });
+    saveTemplates();
+    renderZoneEditor();
+    renderZonesAndLegend();
+    renderTrackTicks();
+    tick();
+  });
+
+  // ===== 範本管理(選單+重新命名/新增/刪除小按鈕)=====
+  const templateSelect = document.getElementById("templateSelect");
+  const editingTemplateName = document.getElementById("editingTemplateName");
+
+  function renderTemplateSelect() {
+    templateSelect.innerHTML = "";
+    templates.forEach((t) => {
+      const opt = document.createElement("option");
+      opt.value = t.id;
+      opt.textContent = t.name;
+      templateSelect.appendChild(opt);
+    });
+    templateSelect.value = activeTemplateId;
+    editingTemplateName.textContent = getCurrentTemplate().name;
+    document.getElementById("deleteTemplateBtn").disabled = templates.length <= 1;
+  }
+
+  templateSelect.addEventListener("change", (e) => {
+    activeTemplateId = e.target.value;
+    saveActiveTemplate();
+    editingTemplateName.textContent = getCurrentTemplate().name;
+    renderZoneEditor();
+    renderZonesAndLegend();
+    renderTrackTicks();
+    tick();
+  });
+
+  document.getElementById("addTemplateBtn").addEventListener("click", () => {
+    const newTemplate = {
+      id: "tpl_" + Date.now(),
+      name: "新範本",
+      zones: [{ name: "新時段", start: 0, end: 24, color: "#4cc2ff" }],
+    };
+    templates.push(newTemplate);
+    activeTemplateId = newTemplate.id;
+    saveTemplates();
+    saveActiveTemplate();
+    renderTemplateSelect();
+    renderZoneEditor();
+    renderZonesAndLegend();
+    renderTrackTicks();
+    tick();
+  });
+
+  document.getElementById("renameTemplateBtn").addEventListener("click", () => {
+    const t = getCurrentTemplate();
+    const newName = prompt("範本名稱", t.name);
+    if (newName === null) return;
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    t.name = trimmed;
+    saveTemplates();
+    renderTemplateSelect();
+  });
+
+  document.getElementById("deleteTemplateBtn").addEventListener("click", () => {
+    if (templates.length <= 1) return;
+    const t = getCurrentTemplate();
+    if (!confirm(`確定要刪除範本「${t.name}」嗎?`)) return;
+    const idx = templates.indexOf(t);
+    templates.splice(idx, 1);
+    activeTemplateId = templates[0].id;
+    saveTemplates();
+    saveActiveTemplate();
+    renderTemplateSelect();
     renderZoneEditor();
     renderZonesAndLegend();
     renderTrackTicks();
@@ -571,6 +713,7 @@
 
   // ===== 啟動 =====
   loadState();
+  renderTemplateSelect();
   renderZonesAndLegend();
   renderTicks();
   renderZoneEditor();
