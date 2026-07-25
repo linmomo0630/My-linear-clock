@@ -117,6 +117,49 @@
   .stat-card .value { font-family: 'JetBrains Mono', monospace; font-size: 1.5rem; font-weight: 600; color: var(--accent); }
   .stat-card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
 
+  /* ===== 待辦事項面板(來自 Notion) ===== */
+  #todoPanel {
+    width: min(92%, 500px);
+    margin-top: 32px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+  }
+  .todo-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .todo-header h3 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    margin: 0;
+  }
+  .todo-status { font-size: 0.72rem; color: var(--muted); }
+  .todo-status.error { color: #f87171; }
+  #todoList { list-style: none; margin: 0; padding: 0; }
+  #todoList li {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.88rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #todoList li:last-child { border-bottom: none; }
+  #todoList li::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+
   /* ===== 設定按鈕(固定在右上角,主畫面保持乾淨) ===== */
   #settingsToggle {
     position: fixed;
@@ -301,6 +344,14 @@
       <div class="value" id="nextZoneLabel">--</div>
       <div class="label">下一個時段</div>
     </div>
+  </div>
+
+  <div id="todoPanel">
+    <div class="todo-header">
+      <h3>待辦事項</h3>
+      <span id="todoStatus" class="todo-status">連接中...</span>
+    </div>
+    <ul id="todoList"></ul>
   </div>
 
   <!-- ===== 側邊設定抽屜 ===== -->
@@ -693,6 +744,31 @@
     renderTicks();
   });
 
+  // ===== 待辦事項:呼叫我們自己搭的 Vercel 後端,間接抓取 Notion 資料 =====
+  const NOTION_BACKEND_URL = "https://clock-notion-backend.vercel.app/api/todos";
+
+  async function loadTodos() {
+    const statusEl = document.getElementById("todoStatus");
+    const listEl = document.getElementById("todoList");
+    try {
+      const res = await fetch(NOTION_BACKEND_URL);
+      const data = await res.json();
+      if (!data.todos || data.todos.length === 0) {
+        statusEl.textContent = "目前沒有待辦事項";
+        listEl.innerHTML = "";
+        return;
+      }
+      listEl.innerHTML = data.todos
+        .map((t) => `<li>${t.title}</li>`)
+        .join("");
+      statusEl.textContent = `已同步 · ${data.todos.length} 筆`;
+      statusEl.classList.remove("error");
+    } catch (err) {
+      statusEl.textContent = "連接失敗";
+      statusEl.classList.add("error");
+    }
+  }
+
   // ===== 設定抽屜開關 =====
   const settingsToggle = document.getElementById("settingsToggle");
   const settingsDrawer = document.getElementById("settingsDrawer");
@@ -719,6 +795,7 @@
   renderZoneEditor();
   tick();
   setInterval(tick, 1000);
+  loadTodos();
 </script>
 </body>
 </html>
