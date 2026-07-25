@@ -28,12 +28,10 @@
       var(--bg);
     color: var(--fg);
     font-family: 'Inter', sans-serif;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 48px 20px 60px;
+    padding: 48px 0 60px;
   }
 
+  .page-header { text-align: center; margin-bottom: 32px; }
   h1 {
     font-family: 'JetBrains Mono', monospace;
     font-size: 1.1rem;
@@ -42,32 +40,93 @@
     color: var(--muted);
     margin: 0 0 4px;
   }
-  .subtitle { color: var(--muted); font-size: 0.85rem; margin: 0 0 36px; }
+  .subtitle { color: var(--muted); font-size: 0.85rem; margin: 0; }
+
+  /* ===== 可拖動面板的畫布 ===== */
+  #canvasWrap { width: 100%; overflow-x: auto; padding: 0 20px; }
+  #canvas {
+    position: relative;
+    width: 1240px;
+    max-width: none;
+    height: 680px;
+    margin: 0 auto;
+  }
+
+  .widget {
+    position: absolute;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+    resize: none;
+    min-width: 240px;
+    min-height: 160px;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  body.edit-mode .widget {
+    background: var(--panel);
+    border-color: var(--border);
+    resize: both;
+  }
+  /* 個別面板選擇「固定顯示底框」時,不論檢視或編輯模式都保留卡片外觀 */
+  .widget.show-card {
+    background: var(--panel);
+    border-color: var(--border);
+  }
+  .widget-handle {
+    display: none;
+    cursor: grab;
+    padding: 8px 14px;
+    font-size: 0.68rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    user-select: none;
+    flex-shrink: 0;
+  }
+  body.edit-mode .widget-handle { display: block; }
+  .widget-handle:active { cursor: grabbing; }
+  .widget-body {
+    padding: 12px 16px;
+    overflow: auto;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    container-type: inline-size;
+  }
 
   #liveTime {
     font-family: 'JetBrains Mono', monospace;
-    font-size: clamp(2.8rem, 10vw, 5rem);
+    font-size: clamp(1.8rem, 17cqw, 3.6rem);
     font-weight: 700;
     color: var(--fg);
     text-shadow: 0 0 24px var(--accent-glow);
     letter-spacing: 2px;
+    text-align: center;
   }
-  #dateLine { font-family: 'JetBrains Mono', monospace; color: var(--muted); font-size: 0.95rem; margin-bottom: 40px; }
+  #dateLine {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--muted);
+    font-size: clamp(0.7rem, 3.2cqw, 0.95rem);
+    margin-bottom: 20px;
+    text-align: center;
+  }
 
   /* ===== 時間軸主體 ===== */
-  .track-wrap { width: min(92%, 900px); }
-
   .track {
     position: relative;
     height: 46px;
     border-radius: 10px;
-    background: var(--panel);
+    background: var(--bg);
     border: 1px solid var(--border);
     overflow: hidden;
+    flex-shrink: 0;
   }
   .zone { position: absolute; top: 0; height: 100%; opacity: 0.55; }
 
-  /* 刻度線:畫在時段色塊上方、時間標記下方 */
   .tick-mark {
     position: absolute;
     top: 0;
@@ -92,7 +151,7 @@
     50% { box-shadow: 0 0 20px 5px var(--accent-glow); }
   }
 
-  .hour-ticks { position: relative; height: 18px; margin-top: 6px; }
+  .hour-ticks { position: relative; height: 18px; margin-top: 6px; flex-shrink: 0; }
   .hour-ticks span {
     position: absolute;
     transform: translateX(-50%);
@@ -101,57 +160,43 @@
     color: var(--muted);
   }
 
-  .legend { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; margin-top: 28px; }
-  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--muted); }
-  .swatch { width: 10px; height: 10px; border-radius: 3px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 18px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); }
+  .swatch { width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; }
 
-  .stats { display: flex; gap: 16px; margin-top: 36px; flex-wrap: wrap; justify-content: center; }
-  .stat-card {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 16px 24px;
-    min-width: 160px;
-    text-align: center;
-  }
-  .stat-card .value { font-family: 'JetBrains Mono', monospace; font-size: 1.5rem; font-weight: 600; color: var(--accent); }
-  .stat-card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+  /* ===== 統計面板 ===== */
+  .widget-body.centered { align-items: center; justify-content: center; text-align: center; }
+  .big-stat .value { font-family: 'JetBrains Mono', monospace; font-size: clamp(1.1rem, 15cqw, 2rem); font-weight: 600; color: var(--accent); }
+  .big-stat .label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 6px; }
 
-  /* ===== 待辦事項面板(來自 Notion) ===== */
-  #todoPanel {
-    width: min(92%, 500px);
-    margin-top: 32px;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 16px 20px;
-  }
-  .todo-header {
+  /* ===== 待辦/任務面板共用樣式 ===== */
+  .list-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 10px;
+    flex-shrink: 0;
   }
-  .todo-header h3 {
-    font-size: 0.85rem;
+  .list-header h3 {
+    font-size: 0.78rem;
     text-transform: uppercase;
     letter-spacing: 1px;
     color: var(--muted);
     margin: 0;
   }
-  .todo-status { font-size: 0.72rem; color: var(--muted); }
-  .todo-status.error { color: #f87171; }
-  #todoList { list-style: none; margin: 0; padding: 0; }
-  #todoList li {
+  .list-status { font-size: 0.7rem; color: var(--muted); }
+  .list-status.error { color: #f87171; }
+  .item-list { list-style: none; margin: 0; padding: 0; overflow: auto; }
+  .item-list li {
     padding: 8px 0;
     border-bottom: 1px solid var(--border);
-    font-size: 0.88rem;
+    font-size: 0.85rem;
     display: flex;
     align-items: center;
     gap: 8px;
   }
-  #todoList li:last-child { border-bottom: none; }
-  #todoList li::before {
+  .item-list li:last-child { border-bottom: none; }
+  .item-list li::before {
     content: "";
     width: 6px;
     height: 6px;
@@ -160,7 +205,7 @@
     flex-shrink: 0;
   }
 
-  /* ===== 設定按鈕(固定在右上角,主畫面保持乾淨) ===== */
+  /* ===== 設定按鈕 ===== */
   #settingsToggle {
     position: fixed;
     top: 20px;
@@ -176,10 +221,28 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 10;
+    z-index: 100;
     transition: color 0.15s, border-color 0.15s;
   }
   #settingsToggle:hover { color: var(--accent); border-color: var(--accent); }
+
+  #editModeToggle {
+    position: fixed;
+    top: 20px;
+    left: 72px;
+    height: 42px;
+    padding: 0 16px;
+    border-radius: 21px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.8rem;
+    cursor: pointer;
+    z-index: 100;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  #editModeToggle:hover { color: var(--accent); border-color: var(--accent); }
+  #editModeToggle.active { color: var(--accent); border-color: var(--accent); background: rgba(139,123,255,0.1); }
 
   /* ===== 側邊設定抽屜(左側) ===== */
   #drawerOverlay {
@@ -189,7 +252,7 @@
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s;
-    z-index: 20;
+    z-index: 200;
   }
   #drawerOverlay.open { opacity: 1; pointer-events: auto; }
 
@@ -203,7 +266,7 @@
     border-right: 1px solid var(--border);
     transform: translateX(-100%);
     transition: transform 0.25s ease;
-    z-index: 21;
+    z-index: 201;
     overflow-y: auto;
     padding: 20px;
   }
@@ -215,11 +278,7 @@
     align-items: center;
     margin-bottom: 20px;
   }
-  .drawer-header h2 {
-    font-size: 0.95rem;
-    letter-spacing: 1px;
-    margin: 0;
-  }
+  .drawer-header h2 { font-size: 0.95rem; letter-spacing: 1px; margin: 0; }
   #closeDrawer {
     background: none;
     border: none;
@@ -278,6 +337,7 @@
   .btn.danger:hover { border-color: #f87171; color: #f87171; }
   .btn:disabled { opacity: 0.35; cursor: not-allowed; }
   .btn:disabled:hover { border-color: var(--border); color: var(--fg); }
+  .btn.full { width: 100%; }
 
   .zone-row {
     display: flex;
@@ -293,65 +353,108 @@
   .zone-row input[type="color"] { width: 30px; height: 26px; }
   #addZoneBtn { margin-top: 10px; width: 100%; }
 
-  /* ===== 範本管理(精簡版:選單+小按鈕並排) ===== */
   .template-label { display: block; font-size: 0.85rem; color: var(--fg); margin-bottom: 8px; }
   .template-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .template-controls select { flex: 1 1 100px; min-width: 90px; }
   .icon-btn {
-    width: 30px;
-    height: 30px;
-    padding: 0;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: 30px; height: 30px; padding: 0; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
   }
 </style>
 </head>
 <body>
 
   <button id="settingsToggle" title="設定" aria-label="開啟設定">⚙</button>
+  <button id="editModeToggle" title="切換編輯模式">✏ 編輯版面</button>
 
-  <h1>My Linear Clock</h1>
-  <p class="subtitle">從零打造 · 屬於我自己的版本</p>
-
-  <div id="liveTime">--:--:--</div>
-  <div id="dateLine">--</div>
-
-  <div class="track-wrap">
-    <div class="track" id="track">
-      <div class="marker" id="marker"></div>
-    </div>
-    <div class="hour-ticks" id="hourTicks"></div>
+  <div class="page-header">
+    <h1>My Linear Clock</h1>
+    <p class="subtitle">從零打造 · 屬於我自己的版本</p>
   </div>
 
-  <div class="legend" id="legend"></div>
+  <div id="canvasWrap">
+    <div id="canvas">
 
-  <div class="stats">
-    <div class="stat-card">
-      <div class="value" id="pctElapsed">--%</div>
-      <div class="label">今日已過</div>
-    </div>
-    <div class="stat-card">
-      <div class="value" id="timeLeft">--:--:--</div>
-      <div class="label">剩餘時間</div>
-    </div>
-    <div class="stat-card">
-      <div class="value" id="currentZoneLabel">--</div>
-      <div class="label" id="currentZoneSubLabel">目前時段</div>
-    </div>
-    <div class="stat-card">
-      <div class="value" id="nextZoneLabel">--</div>
-      <div class="label">下一個時段</div>
-    </div>
-  </div>
+      <!-- ===== 時鐘面板 ===== -->
+      <div class="widget" id="widget-clock" data-widget="clock">
+        <div class="widget-handle">⠿⠿ 時鐘</div>
+        <div class="widget-body">
+          <div id="liveTime">--:--:--</div>
+          <div id="dateLine">--</div>
+          <div class="track" id="track">
+            <div class="marker" id="marker"></div>
+          </div>
+          <div class="hour-ticks" id="hourTicks"></div>
+          <div class="legend" id="legend"></div>
+        </div>
+      </div>
 
-  <div id="todoPanel">
-    <div class="todo-header">
-      <h3>待辦事項</h3>
-      <span id="todoStatus" class="todo-status">連接中...</span>
+      <!-- ===== 統計:四個獨立面板 ===== -->
+      <div class="widget" id="widget-statElapsed" data-widget="statElapsed">
+        <div class="widget-handle">⠿⠿ 今日已過</div>
+        <div class="widget-body centered">
+          <div class="big-stat">
+            <div class="value" id="pctElapsed">--%</div>
+            <div class="label">今日已過</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="widget" id="widget-statRemaining" data-widget="statRemaining">
+        <div class="widget-handle">⠿⠿ 剩餘時間</div>
+        <div class="widget-body centered">
+          <div class="big-stat">
+            <div class="value" id="timeLeft">--:--:--</div>
+            <div class="label">剩餘時間</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="widget" id="widget-statCurrent" data-widget="statCurrent">
+        <div class="widget-handle">⠿⠿ 目前時段</div>
+        <div class="widget-body centered">
+          <div class="big-stat">
+            <div class="value" id="currentZoneLabel">--</div>
+            <div class="label" id="currentZoneSubLabel">目前時段</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="widget" id="widget-statNext" data-widget="statNext">
+        <div class="widget-handle">⠿⠿ 下一個時段</div>
+        <div class="widget-body centered">
+          <div class="big-stat">
+            <div class="value" id="nextZoneLabel">--</div>
+            <div class="label">下一個時段</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 待辦事項面板 ===== -->
+      <div class="widget" id="widget-todo" data-widget="todo">
+        <div class="widget-handle">⠿⠿ 待辦事項</div>
+        <div class="widget-body">
+          <div class="list-header">
+            <h3>待辦事項</h3>
+            <span id="todoStatus" class="list-status">連接中...</span>
+          </div>
+          <ul id="todoList" class="item-list"></ul>
+        </div>
+      </div>
+
+      <!-- ===== 今日任務面板 ===== -->
+      <div class="widget" id="widget-tasks" data-widget="tasks">
+        <div class="widget-handle">⠿⠿ 今日任務</div>
+        <div class="widget-body">
+          <div class="list-header">
+            <h3>今日任務</h3>
+            <span id="tasksStatus" class="list-status">連接中...</span>
+          </div>
+          <ul id="tasksList" class="item-list"></ul>
+        </div>
+      </div>
+
     </div>
-    <ul id="todoList"></ul>
   </div>
 
   <!-- ===== 側邊設定抽屜 ===== -->
@@ -360,6 +463,43 @@
     <div class="drawer-header">
       <h2>設定</h2>
       <button id="closeDrawer" aria-label="關閉設定">✕</button>
+    </div>
+
+    <div class="drawer-section">
+      <h3>版面</h3>
+      <button class="btn full" id="resetLayoutBtn">重設面板位置與大小</button>
+    </div>
+
+    <div class="drawer-section">
+      <h3>面板外觀</h3>
+      <div class="drawer-row">
+        <label for="cardToggle-clock">時鐘顯示底框</label>
+        <input type="checkbox" id="cardToggle-clock" data-widget="clock" />
+      </div>
+      <div class="drawer-row">
+        <label for="cardToggle-statElapsed">今日已過顯示底框</label>
+        <input type="checkbox" id="cardToggle-statElapsed" data-widget="statElapsed" />
+      </div>
+      <div class="drawer-row">
+        <label for="cardToggle-statRemaining">剩餘時間顯示底框</label>
+        <input type="checkbox" id="cardToggle-statRemaining" data-widget="statRemaining" />
+      </div>
+      <div class="drawer-row">
+        <label for="cardToggle-statCurrent">目前時段顯示底框</label>
+        <input type="checkbox" id="cardToggle-statCurrent" data-widget="statCurrent" />
+      </div>
+      <div class="drawer-row">
+        <label for="cardToggle-statNext">下一個時段顯示底框</label>
+        <input type="checkbox" id="cardToggle-statNext" data-widget="statNext" />
+      </div>
+      <div class="drawer-row">
+        <label for="cardToggle-todo">待辦事項顯示底框</label>
+        <input type="checkbox" id="cardToggle-todo" data-widget="todo" />
+      </div>
+      <div class="drawer-row">
+        <label for="cardToggle-tasks">今日任務顯示底框</label>
+        <input type="checkbox" id="cardToggle-tasks" data-widget="tasks" />
+      </div>
     </div>
 
     <div class="drawer-section">
@@ -426,14 +566,32 @@
   const DEFAULT_ACCENT = "#8b7bff";
   const DEFAULT_TICK_MIN = 180;
 
+  // 每個面板的預設位置/大小(單位:px,相對於畫布)
+  const DEFAULT_LAYOUT = {
+    clock:        { x: 20,  y: 20,  w: 620, h: 300 },
+    statElapsed:  { x: 660, y: 20,  w: 155, h: 140 },
+    statRemaining:{ x: 825, y: 20,  w: 155, h: 140 },
+    statCurrent:  { x: 660, y: 170, w: 155, h: 150 },
+    statNext:     { x: 825, y: 170, w: 155, h: 150 },
+    todo:  { x: 20,  y: 340, w: 470, h: 300 },
+    tasks: { x: 510, y: 340, w: 470, h: 300 },
+  };
+
   const LS_TEMPLATES = "myClock_templates";
   const LS_ACTIVE_TEMPLATE = "myClock_activeTemplateId";
-  const LS_ZONES = "myClock_zones"; // 舊版單一時段設定,僅用於遷移
+  const LS_ZONES = "myClock_zones";
   const LS_ACCENT = "myClock_accent";
   const LS_TICK = "myClock_tickIntervalMin";
+  const LS_LAYOUT = "myClock_widgetLayout";
+  const LS_CARD_PREFS = "myClock_cardPrefs";
+  const DEFAULT_CARD_PREFS = {
+    clock: false,
+    statElapsed: true, statRemaining: true, statCurrent: true, statNext: true,
+    todo: true, tasks: true,
+  };
 
   let templates = [];
-  let activeTemplateId = null; // 使用者當天手動選擇的範本,同時也是目前編輯的對象
+  let activeTemplateId = null;
   let tickIntervalMin = DEFAULT_TICK_MIN;
 
   function loadState() {
@@ -442,7 +600,6 @@
       if (rawTemplates) {
         templates = JSON.parse(rawTemplates);
       } else {
-        // 沒有範本資料時,嘗試從舊版單一時段設定遷移,避免使用者原本的設定消失
         const rawZones = localStorage.getItem(LS_ZONES);
         if (rawZones) {
           templates = [{ id: "default", name: "我的排程", zones: JSON.parse(rawZones) }];
@@ -470,7 +627,6 @@
   function saveAccent(hex) { localStorage.setItem(LS_ACCENT, hex); }
   function saveTickInterval() { localStorage.setItem(LS_TICK, String(tickIntervalMin)); }
 
-  // 使用者當天選擇的範本,同時是時鐘顯示的來源與時段編輯的對象
   function getCurrentTemplate() {
     return templates.find((t) => t.id === activeTemplateId) || templates[0];
   }
@@ -510,11 +666,8 @@
     });
   }
 
-  // ===== 畫在時間軸「上面」的刻度線(新加的部分)=====
-  // 每小時整點畫一條較亮的線(major),使用者選擇的刻度單位再補畫較淡的線(minor)
   function renderTrackTicks() {
     track.querySelectorAll(".tick-mark").forEach((el) => el.remove());
-
     const stepHours = tickIntervalMin / 60;
     for (let h = 0; h <= 24 + 1e-6; h += stepHours) {
       if (h > 24) break;
@@ -533,7 +686,7 @@
     for (let h = 0; h <= 24 + 1e-6; h += stepHours) {
       const hh = Math.floor(h) % 24;
       const mm = Math.round((h - Math.floor(h)) * 60);
-      if (mm !== 0) continue; // 刻度單位小於1小時時,只在整點放文字,避免同一小時重複顯示
+      if (mm !== 0) continue;
       const span = document.createElement("span");
       span.textContent = String(hh).padStart(2, "0");
       span.style.left = (Math.min(h, 24) / 24 * 100) + "%";
@@ -545,9 +698,6 @@
   function findCurrentZone(hourFloat) {
     return getCurrentTemplate().zones.find((z) => hourFloat >= z.start && hourFloat < z.end);
   }
-
-  // 找出下一個即將開始的時段:依 start 時間排序後,找第一個 start 大於目前時間的時段
-  // 如果今天已經沒有更晚的時段了,就繞回明天最早的那個
   function findNextZone(hourFloat) {
     const displayZones = getCurrentTemplate().zones;
     if (displayZones.length === 0) return null;
@@ -662,7 +812,7 @@
     tick();
   });
 
-  // ===== 範本管理(選單+重新命名/新增/刪除小按鈕)=====
+  // ===== 範本管理 =====
   const templateSelect = document.getElementById("templateSelect");
   const editingTemplateName = document.getElementById("editingTemplateName");
 
@@ -744,30 +894,32 @@
     renderTicks();
   });
 
-  // ===== 待辦事項:呼叫我們自己搭的 Vercel 後端,間接抓取 Notion 資料 =====
-  const NOTION_BACKEND_URL = "https://clock-notion-backend.vercel.app/api/todos";
+  // ===== 待辦事項 / 今日任務:呼叫 Vercel 後端 =====
+  const TODOS_URL = "https://clock-notion-backend.vercel.app/api/todos";
+  const TASKS_URL = "https://clock-notion-backend.vercel.app/api/tasks";
 
-  async function loadTodos() {
-    const statusEl = document.getElementById("todoStatus");
-    const listEl = document.getElementById("todoList");
+  async function loadList(url, statusElId, listElId, emptyText) {
+    const statusEl = document.getElementById(statusElId);
+    const listEl = document.getElementById(listElId);
     try {
-      const res = await fetch(NOTION_BACKEND_URL);
+      const res = await fetch(url);
       const data = await res.json();
-      if (!data.todos || data.todos.length === 0) {
-        statusEl.textContent = "目前沒有待辦事項";
+      const items = data.todos || data.tasks || [];
+      if (items.length === 0) {
+        statusEl.textContent = emptyText;
         listEl.innerHTML = "";
         return;
       }
-      listEl.innerHTML = data.todos
-        .map((t) => `<li>${t.title}</li>`)
-        .join("");
-      statusEl.textContent = `已同步 · ${data.todos.length} 筆`;
+      listEl.innerHTML = items.map((t) => `<li>${t.title}</li>`).join("");
+      statusEl.textContent = `已同步 · ${items.length} 筆`;
       statusEl.classList.remove("error");
     } catch (err) {
       statusEl.textContent = "連接失敗";
       statusEl.classList.add("error");
     }
   }
+  function loadTodos() { loadList(TODOS_URL, "todoStatus", "todoList", "目前沒有待辦事項"); }
+  function loadTasks() { loadList(TASKS_URL, "tasksStatus", "tasksList", "今天沒有安排任務"); }
 
   // ===== 設定抽屜開關 =====
   const settingsToggle = document.getElementById("settingsToggle");
@@ -787,8 +939,139 @@
   closeDrawer.addEventListener("click", closeDrawerFn);
   drawerOverlay.addEventListener("click", closeDrawerFn);
 
+  // ===== 面板拖動 / 縮放 / 版面儲存 =====
+  let zCounter = 10;
+
+  function loadLayout() {
+    try {
+      const raw = localStorage.getItem(LS_LAYOUT);
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  }
+  function saveLayout(layout) {
+    localStorage.setItem(LS_LAYOUT, JSON.stringify(layout));
+  }
+
+  function applyLayoutToWidgets() {
+    const saved = loadLayout();
+    document.querySelectorAll(".widget").forEach((widget) => {
+      const key = widget.dataset.widget;
+      const rect = saved[key] || DEFAULT_LAYOUT[key];
+      widget.style.left = rect.x + "px";
+      widget.style.top = rect.y + "px";
+      widget.style.width = rect.w + "px";
+      widget.style.height = rect.h + "px";
+    });
+  }
+
+  function currentLayoutFromDOM() {
+    const layout = {};
+    document.querySelectorAll(".widget").forEach((widget) => {
+      const key = widget.dataset.widget;
+      layout[key] = {
+        x: widget.offsetLeft,
+        y: widget.offsetTop,
+        w: widget.offsetWidth,
+        h: widget.offsetHeight,
+      };
+    });
+    return layout;
+  }
+
+  function bringToFront(widget) {
+    zCounter += 1;
+    widget.style.zIndex = zCounter;
+  }
+
+  function makeDraggable(widget) {
+    const handle = widget.querySelector(".widget-handle");
+    handle.addEventListener("pointerdown", (e) => {
+      bringToFront(widget);
+      const startX = e.clientX, startY = e.clientY;
+      const startLeft = widget.offsetLeft, startTop = widget.offsetTop;
+      const canvas = document.getElementById("canvas");
+
+      function onMove(ev) {
+        let newLeft = startLeft + (ev.clientX - startX);
+        let newTop = startTop + (ev.clientY - startY);
+        newLeft = Math.max(0, newLeft);
+        newTop = Math.max(0, newTop);
+        widget.style.left = newLeft + "px";
+        widget.style.top = newTop + "px";
+      }
+      function onUp() {
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        saveLayout(currentLayoutFromDOM());
+      }
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+    });
+  }
+
+  function makeResizable(widget) {
+    widget.addEventListener("pointerdown", () => bringToFront(widget));
+    const resizeObserver = new ResizeObserver(() => {
+      clearTimeout(widget._resizeSaveTimer);
+      widget._resizeSaveTimer = setTimeout(() => {
+        saveLayout(currentLayoutFromDOM());
+      }, 300);
+    });
+    resizeObserver.observe(widget);
+  }
+
+  document.querySelectorAll(".widget").forEach((widget) => {
+    makeDraggable(widget);
+    makeResizable(widget);
+  });
+
+  document.getElementById("resetLayoutBtn").addEventListener("click", () => {
+    if (!confirm("確定要把所有面板的位置與大小恢復成預設值嗎?")) return;
+    localStorage.removeItem(LS_LAYOUT);
+    applyLayoutToWidgets();
+  });
+
+  // ===== 編輯模式 / 檢視模式切換 =====
+  const editModeToggle = document.getElementById("editModeToggle");
+  editModeToggle.addEventListener("click", () => {
+    const isEdit = document.body.classList.toggle("edit-mode");
+    editModeToggle.classList.toggle("active", isEdit);
+    editModeToggle.textContent = isEdit ? "✓ 完成編輯" : "✏ 編輯版面";
+  });
+
+  // ===== 個別面板的底框顯示偏好 =====
+  function loadCardPrefs() {
+    try {
+      const raw = localStorage.getItem(LS_CARD_PREFS);
+      return raw ? { ...DEFAULT_CARD_PREFS, ...JSON.parse(raw) } : { ...DEFAULT_CARD_PREFS };
+    } catch { return { ...DEFAULT_CARD_PREFS }; }
+  }
+  function saveCardPrefs(prefs) {
+    localStorage.setItem(LS_CARD_PREFS, JSON.stringify(prefs));
+  }
+  function applyCardPrefs() {
+    const prefs = loadCardPrefs();
+    document.querySelectorAll(".widget").forEach((widget) => {
+      const key = widget.dataset.widget;
+      widget.classList.toggle("show-card", !!prefs[key]);
+    });
+    document.querySelectorAll("[data-widget][type=checkbox]").forEach((cb) => {
+      cb.checked = !!prefs[cb.dataset.widget];
+    });
+  }
+  document.querySelectorAll("[data-widget][type=checkbox]").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      const prefs = loadCardPrefs();
+      prefs[cb.dataset.widget] = cb.checked;
+      saveCardPrefs(prefs);
+      applyCardPrefs();
+    });
+  });
+
   // ===== 啟動 =====
   loadState();
+  applyLayoutToWidgets();
+  applyCardPrefs();
   renderTemplateSelect();
   renderZonesAndLegend();
   renderTicks();
@@ -796,6 +1079,7 @@
   tick();
   setInterval(tick, 1000);
   loadTodos();
+  loadTasks();
 </script>
 </body>
 </html>
