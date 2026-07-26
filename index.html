@@ -50,6 +50,14 @@
     max-width: none;
     height: 680px;
     margin: 0 auto;
+    background-image: none;
+    transition: background-image 0.15s;
+  }
+  body.edit-mode #canvas {
+    background-image:
+      linear-gradient(to right, rgba(139,123,255,0.14) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(139,123,255,0.14) 1px, transparent 1px);
+    background-size: var(--grid-size, 20px) var(--grid-size, 20px);
   }
 
   .widget {
@@ -467,6 +475,19 @@
 
     <div class="drawer-section">
       <h3>版面</h3>
+      <div class="drawer-row">
+        <label for="snapToggle">對齊格線</label>
+        <input type="checkbox" id="snapToggle" />
+      </div>
+      <div class="drawer-row">
+        <label for="gridSizeSelect">格線大小</label>
+        <select id="gridSizeSelect">
+          <option value="10">10px(精細)</option>
+          <option value="20">20px</option>
+          <option value="40">40px</option>
+          <option value="60">60px(寬鬆)</option>
+        </select>
+      </div>
       <button class="btn full" id="resetLayoutBtn">重設面板位置與大小</button>
     </div>
 
@@ -584,6 +605,8 @@
   const LS_TICK = "myClock_tickIntervalMin";
   const LS_LAYOUT = "myClock_widgetLayout";
   const LS_CARD_PREFS = "myClock_cardPrefs";
+  const LS_SNAP_ENABLED = "myClock_snapEnabled";
+  const LS_GRID_SIZE = "myClock_gridSize";
   const DEFAULT_CARD_PREFS = {
     clock: false,
     statElapsed: true, statRemaining: true, statCurrent: true, statNext: true,
@@ -939,6 +962,34 @@
   closeDrawer.addEventListener("click", closeDrawerFn);
   drawerOverlay.addEventListener("click", closeDrawerFn);
 
+  // ===== 格線對齊 =====
+  let snapEnabled = true;
+  let gridSize = 20;
+
+  function loadGridSettings() {
+    const rawSnap = localStorage.getItem(LS_SNAP_ENABLED);
+    snapEnabled = rawSnap === null ? true : rawSnap === "true";
+    gridSize = parseInt(localStorage.getItem(LS_GRID_SIZE), 10) || 20;
+
+    document.getElementById("snapToggle").checked = snapEnabled;
+    document.getElementById("gridSizeSelect").value = String(gridSize);
+    document.getElementById("canvas").style.setProperty("--grid-size", gridSize + "px");
+  }
+  function snapValue(v) {
+    if (!snapEnabled) return v;
+    return Math.round(v / gridSize) * gridSize;
+  }
+
+  document.getElementById("snapToggle").addEventListener("change", (e) => {
+    snapEnabled = e.target.checked;
+    localStorage.setItem(LS_SNAP_ENABLED, String(snapEnabled));
+  });
+  document.getElementById("gridSizeSelect").addEventListener("change", (e) => {
+    gridSize = parseInt(e.target.value, 10);
+    localStorage.setItem(LS_GRID_SIZE, String(gridSize));
+    document.getElementById("canvas").style.setProperty("--grid-size", gridSize + "px");
+  });
+
   // ===== 面板拖動 / 縮放 / 版面儲存 =====
   let zCounter = 10;
 
@@ -994,8 +1045,8 @@
       function onMove(ev) {
         let newLeft = startLeft + (ev.clientX - startX);
         let newTop = startTop + (ev.clientY - startY);
-        newLeft = Math.max(0, newLeft);
-        newTop = Math.max(0, newTop);
+        newLeft = Math.max(0, snapValue(newLeft));
+        newTop = Math.max(0, snapValue(newTop));
         widget.style.left = newLeft + "px";
         widget.style.top = newTop + "px";
       }
@@ -1014,6 +1065,12 @@
     const resizeObserver = new ResizeObserver(() => {
       clearTimeout(widget._resizeSaveTimer);
       widget._resizeSaveTimer = setTimeout(() => {
+        if (snapEnabled) {
+          const snappedW = Math.max(widget.style.minWidth ? parseInt(widget.style.minWidth) : 240, snapValue(widget.offsetWidth));
+          const snappedH = Math.max(160, snapValue(widget.offsetHeight));
+          widget.style.width = snappedW + "px";
+          widget.style.height = snappedH + "px";
+        }
         saveLayout(currentLayoutFromDOM());
       }, 300);
     });
@@ -1070,6 +1127,7 @@
 
   // ===== 啟動 =====
   loadState();
+  loadGridSettings();
   applyLayoutToWidgets();
   applyCardPrefs();
   renderTemplateSelect();
