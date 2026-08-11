@@ -954,13 +954,13 @@
     toastTimer = setTimeout(() => toastEl.classList.remove("show"), 3000);
   }
 
-  async function completeItem(id, cb, li) {
+  async function completeItem(id, type, cb, li) {
     cb.disabled = true;
     try {
       const res = await fetch(COMPLETE_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ id, type }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || "更新失敗");
@@ -972,7 +972,7 @@
     }
   }
 
-  async function loadList(url, statusElId, listElId, emptyText) {
+  async function loadList(url, statusElId, listElId, emptyText, type) {
     const statusEl = document.getElementById(statusElId);
     const listEl = document.getElementById(listElId);
     try {
@@ -993,7 +993,7 @@
       listEl.querySelectorAll(".item-check").forEach((cb) => {
         cb.addEventListener("change", () => {
           const li = cb.closest("li");
-          completeItem(li.dataset.id, cb, li);
+          completeItem(li.dataset.id, type, cb, li);
         });
       });
       statusEl.textContent = `已同步 · ${items.length} 筆`;
@@ -1003,8 +1003,8 @@
       statusEl.classList.add("error");
     }
   }
-  function loadTodos() { loadList(TODOS_URL, "todoStatus", "todoList", "目前沒有待辦事項"); }
-  function loadTasks() { loadList(TASKS_URL, "tasksStatus", "tasksList", "今天沒有安排任務"); }
+  function loadTodos() { loadList(TODOS_URL, "todoStatus", "todoList", "目前沒有待辦事項", "todo"); }
+  function loadTasks() { loadList(TASKS_URL, "tasksStatus", "tasksList", "今天沒有安排任務", "task"); }
 
   // ===== 設定抽屜開關 =====
   const settingsToggle = document.getElementById("settingsToggle");
