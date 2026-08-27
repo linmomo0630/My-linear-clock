@@ -13,7 +13,7 @@
     --panel: #10141f;
     --border: #1e2436;
     --fg: #e7e9f2;
-    --muted: #6b7280;
+    --muted: #8b93a8;
     --accent: #8b7bff;
     --accent-glow: rgba(139, 123, 255, 0.55);
   }
@@ -389,6 +389,20 @@
     width: 30px; height: 30px; padding: 0; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    .marker { animation: none; }
+  }
+
+  /* 手機最低限度修正:讓時鐘本體(時間+時間軸)在第一屏內完整可見,
+     不動到其餘面板的自由排版座標 */
+  @media (max-width: 680px) {
+    #canvas { margin: 0; }
+    .widget[data-widget="clock"] {
+      width: calc(100vw - 40px) !important;
+      height: auto !important;
+    }
+  }
 </style>
 </head>
 <body>
@@ -570,9 +584,9 @@
       <label for="templateSelect" class="template-label">目前使用</label>
       <div class="template-controls">
         <select id="templateSelect"></select>
-        <button class="btn icon-btn" id="renameTemplateBtn" title="重新命名">✎</button>
-        <button class="btn icon-btn" id="addTemplateBtn" title="新增範本">+</button>
-        <button class="btn danger icon-btn" id="deleteTemplateBtn" title="刪除範本">✕</button>
+        <button class="btn icon-btn" id="renameTemplateBtn" title="重新命名" aria-label="重新命名範本">✎</button>
+        <button class="btn icon-btn" id="addTemplateBtn" title="新增範本" aria-label="新增範本">+</button>
+        <button class="btn danger icon-btn" id="deleteTemplateBtn" title="刪除範本" aria-label="刪除範本">✕</button>
       </div>
     </div>
 
@@ -585,25 +599,27 @@
 
 <script>
   // ===== 預設值 =====
+  // 時段以小時數記錄 { start, end }。end 可小於 start,代表跨越午夜;
+  // end 為 0 代表午夜(等同舊格式的 24)。end === start 視為整天。
   const DEFAULT_TEMPLATES = [
     {
       id: "weekday",
       name: "平日",
       zones: [
-        { name: "睡眠",   start: 0,  end: 6,  color: "#3b4560" },
-        { name: "晨間準備", start: 6,  end: 9,  color: "#ffb454" },
+        { name: "睡眠",   start: 0,  end: 6, color: "#3b4560" },
+        { name: "晨間準備", start: 6,  end: 9, color: "#ffb454" },
         { name: "工作",   start: 9,  end: 18, color: "#4cc2ff" },
-        { name: "晚間",   start: 18, end: 24, color: "#b892ff" },
+        { name: "晚間",   start: 18, end: 0, color: "#b892ff" },
       ],
     },
     {
       id: "weekend",
       name: "假日",
       zones: [
-        { name: "睡眠",   start: 0,  end: 8,  color: "#3b4560" },
+        { name: "睡眠",   start: 0,  end: 8, color: "#3b4560" },
         { name: "悠閒早晨", start: 8,  end: 11, color: "#ffb454" },
         { name: "自由時間", start: 11, end: 22, color: "#4cc2ff" },
-        { name: "夜晚",   start: 22, end: 24, color: "#b892ff" },
+        { name: "夜晚",   start: 22, end: 0, color: "#b892ff" },
       ],
     },
   ];
@@ -630,6 +646,21 @@
   const LS_CARD_PREFS = "myClock_cardPrefs";
   const LS_SNAP_ENABLED = "myClock_snapEnabled";
   const LS_GRID_SIZE = "myClock_gridSize";
+
+  // localStorage 在無痕模式 / 封鎖 cookie 的瀏覽器會直接拋錯,
+  // 統一包一層,存取失敗時安靜降級,不讓整頁 script 中斷。
+  const storage = {
+    get(key) {
+      try { return window.localStorage.getItem(key); } catch { return null; }
+    },
+    set(key, value) {
+      try { window.localStorage.setItem(key, value); } catch {}
+    },
+    remove(key) {
+      try { window.localStorage.removeItem(key); } catch {}
+    },
+  };
+
   const DEFAULT_CARD_PREFS = {
     clock: false,
     statElapsed: true, statRemaining: true, statCurrent: true, statNext: true,
@@ -642,11 +673,11 @@
 
   function loadState() {
     try {
-      const rawTemplates = localStorage.getItem(LS_TEMPLATES);
+      const rawTemplates = storage.get(LS_TEMPLATES);
       if (rawTemplates) {
         templates = JSON.parse(rawTemplates);
       } else {
-        const rawZones = localStorage.getItem(LS_ZONES);
+        const rawZones = storage.get(LS_ZONES);
         if (rawZones) {
           templates = [{ id: "default", name: "我的排程", zones: JSON.parse(rawZones) }];
         } else {
@@ -658,20 +689,32 @@
       templates = JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
     }
 
-    const savedActiveId = localStorage.getItem(LS_ACTIVE_TEMPLATE);
+    // 舊資料轉換:end:24(或其他超出 0–24 的值)收斂到新模型,並持久化一次
+    let migrated = false;
+    templates.forEach((t) => {
+      if (!Array.isArray(t.zones)) return;
+      t.zones = t.zones.map((z) => {
+        const n = normalizeZone(z);
+        if (n.start !== z.start || n.end !== z.end) migrated = true;
+        return n;
+      });
+    });
+    if (migrated) saveTemplates();
+
+    const savedActiveId = storage.get(LS_ACTIVE_TEMPLATE);
     activeTemplateId = templates.some((t) => t.id === savedActiveId) ? savedActiveId : templates[0].id;
 
-    const accent = localStorage.getItem(LS_ACCENT) || DEFAULT_ACCENT;
+    const accent = storage.get(LS_ACCENT) || DEFAULT_ACCENT;
     applyAccent(accent);
     document.getElementById("accentPicker").value = accent;
 
-    tickIntervalMin = parseInt(localStorage.getItem(LS_TICK), 10) || DEFAULT_TICK_MIN;
+    tickIntervalMin = parseInt(storage.get(LS_TICK), 10) || DEFAULT_TICK_MIN;
     document.getElementById("tickIntervalSelect").value = String(tickIntervalMin);
   }
-  function saveTemplates() { localStorage.setItem(LS_TEMPLATES, JSON.stringify(templates)); }
-  function saveActiveTemplate() { localStorage.setItem(LS_ACTIVE_TEMPLATE, activeTemplateId); }
-  function saveAccent(hex) { localStorage.setItem(LS_ACCENT, hex); }
-  function saveTickInterval() { localStorage.setItem(LS_TICK, String(tickIntervalMin)); }
+  function saveTemplates() { storage.set(LS_TEMPLATES, JSON.stringify(templates)); }
+  function saveActiveTemplate() { storage.set(LS_ACTIVE_TEMPLATE, activeTemplateId); }
+  function saveAccent(hex) { storage.set(LS_ACCENT, hex); }
+  function saveTickInterval() { storage.set(LS_TICK, String(tickIntervalMin)); }
 
   function getCurrentTemplate() {
     return templates.find((t) => t.id === activeTemplateId) || templates[0];
@@ -689,6 +732,14 @@
     document.documentElement.style.setProperty("--bg-grid", hexToRgba(hex, 0.05));
   }
 
+  // 時段名稱、待辦標題等文字可能來自使用者輸入或 Notion,
+  // 進到 innerHTML / 屬性前一律跳脫,避免 HTML 注入。
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    })[c]);
+  }
+
   const track = document.getElementById("track");
   const marker = document.getElementById("marker");
   const legend = document.getElementById("legend");
@@ -698,16 +749,27 @@
     legend.innerHTML = "";
     const displayZones = getCurrentTemplate().zones;
     displayZones.forEach((z) => {
-      const el = document.createElement("div");
-      el.className = "zone";
-      el.style.left = (z.start / 24 * 100) + "%";
-      el.style.width = ((z.end - z.start) / 24 * 100) + "%";
-      el.style.background = z.color;
-      track.appendChild(el);
+      // 跨夜時段拆成兩段畫:start→24 與 0→end
+      const segments = z.end > z.start ? [[z.start, z.end]]
+        : z.end < z.start ? [[z.start, 24], [0, z.end]]
+        : [[0, 24]];
+      segments.forEach(([s, e]) => {
+        if (e - s <= 0) return;
+        const el = document.createElement("div");
+        el.className = "zone";
+        el.style.left = (s / 24 * 100) + "%";
+        el.style.width = ((e - s) / 24 * 100) + "%";
+        el.style.background = z.color;
+        track.appendChild(el);
+      });
 
       const item = document.createElement("div");
       item.className = "legend-item";
-      item.innerHTML = `<span class="swatch" style="background:${z.color}"></span>${z.name}`;
+      const swatch = document.createElement("span");
+      swatch.className = "swatch";
+      swatch.style.background = z.color;
+      item.appendChild(swatch);
+      item.appendChild(document.createTextNode(z.name));
       legend.appendChild(item);
     });
   }
@@ -741,15 +803,40 @@
     renderTrackTicks();
   }
 
+  // ===== 時段模型輔助 =====
+  // 舊資料相容:把 start/end 收斂到 0–24(24 → 0,負值也拉回)。
+  function normalizeZone(z) {
+    const norm = (v) => {
+      let n = Number(v);
+      if (!isFinite(n)) n = 0;
+      return ((n % 24) + 24) % 24;
+    };
+    return { ...z, start: norm(z.start), end: norm(z.end) };
+  }
+  // 時段是否涵蓋某個小時值(0–24),支援跨夜(end < start)
+  function zoneCoversHour(z, hourFloat) {
+    if (z.end > z.start) return hourFloat >= z.start && hourFloat < z.end;
+    if (z.end < z.start) return hourFloat >= z.start || hourFloat < z.end; // 跨越午夜
+    return true; // end === start:整天
+  }
+  // 從現在到時段結束還有幾小時,跨夜時 +24 避免負值
+  function hoursUntilZoneEnd(z, hourFloat) {
+    let d = z.end - hourFloat;
+    if (d <= 0) d += 24;
+    return d;
+  }
+
   function findCurrentZone(hourFloat) {
-    return getCurrentTemplate().zones.find((z) => hourFloat >= z.start && hourFloat < z.end);
+    return getCurrentTemplate().zones.find((z) => zoneCoversHour(z, hourFloat));
   }
   function findNextZone(hourFloat) {
-    const displayZones = getCurrentTemplate().zones;
-    if (displayZones.length === 0) return null;
-    const sorted = [...displayZones].sort((a, b) => a.start - b.start);
-    const upcoming = sorted.find((z) => z.start > hourFloat);
-    return upcoming || sorted[0];
+    const zones = getCurrentTemplate().zones;
+    if (zones.length === 0) return null;
+    const current = findCurrentZone(hourFloat);
+    const others = zones.filter((z) => z !== current);
+    if (others.length === 0) return null;
+    const sorted = [...others].sort((a, b) => a.start - b.start);
+    return sorted.find((z) => z.start > hourFloat) || sorted[0];
   }
 
   function tick() {
@@ -777,7 +864,7 @@
 
     const currentZone = findCurrentZone(hourFloat);
     if (currentZone) {
-      const remainMinutes = (currentZone.end - hourFloat) * 60;
+      const remainMinutes = hoursUntilZoneEnd(currentZone, hourFloat) * 60;
       let countdownText;
       if (remainMinutes >= 60) {
         countdownText = Math.floor(remainMinutes / 60) + " 小時";
@@ -801,8 +888,9 @@
     return String(hh).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
   }
   function timeStrToHour(timeStr) {
-    const [hh, mm] = timeStr.split(":").map(Number);
-    return hh + mm / 60;
+    const [hh, mm] = String(timeStr).split(":").map(Number);
+    if (!isFinite(hh)) return 0;
+    return hh + (isFinite(mm) ? mm : 0) / 60;
   }
 
   const zoneList = document.getElementById("zoneList");
@@ -813,14 +901,17 @@
     editingZones.forEach((z, idx) => {
       const row = document.createElement("div");
       row.className = "zone-row";
+      const crossesMidnight = (zz) => zz.end < zz.start;
       row.innerHTML = `
-        <input type="text" value="${z.name}" data-field="name" />
+        <input type="text" value="${escapeHtml(z.name)}" data-field="name" />
         <input type="time" value="${hourToTimeStr(z.start)}" data-field="start" />
         <span style="color:var(--muted);font-size:0.7rem;">至</span>
         <input type="time" value="${hourToTimeStr(z.end)}" data-field="end" />
-        <input type="color" value="${z.color}" data-field="color" />
+        <span class="overnight-hint" style="color:var(--accent);font-size:0.65rem;${crossesMidnight(z) ? "" : "display:none;"}">跨夜</span>
+        <input type="color" value="${escapeHtml(z.color)}" data-field="color" />
         <button class="btn danger" data-action="delete">刪除</button>
       `;
+      const hintEl = row.querySelector(".overnight-hint");
 
       row.querySelectorAll("input").forEach((input) => {
         input.addEventListener("change", () => {
@@ -829,6 +920,7 @@
           if (field === "start") editingZones[idx].start = timeStrToHour(input.value);
           if (field === "end") editingZones[idx].end = timeStrToHour(input.value);
           if (field === "color") editingZones[idx].color = input.value;
+          hintEl.style.display = crossesMidnight(editingZones[idx]) ? "" : "none";
           saveTemplates();
           renderZonesAndLegend();
           renderTrackTicks();
@@ -889,7 +981,7 @@
     const newTemplate = {
       id: "tpl_" + Date.now(),
       name: "新範本",
-      zones: [{ name: "新時段", start: 0, end: 24, color: "#4cc2ff" }],
+      zones: [{ name: "新時段", start: 0, end: 12, color: "#4cc2ff" }],
     };
     templates.push(newTemplate);
     activeTemplateId = newTemplate.id;
@@ -987,7 +1079,7 @@
       listEl.innerHTML = items
         .map(
           (t) =>
-            `<li data-id="${t.id}"><input type="checkbox" class="item-check" /><span class="item-title">${t.title}</span></li>`
+            `<li data-id="${escapeHtml(t.id)}"><input type="checkbox" class="item-check" aria-label="${escapeHtml(t.title)}" /><span class="item-title">${escapeHtml(t.title)}</span></li>`
         )
         .join("");
       listEl.querySelectorAll(".item-check").forEach((cb) => {
@@ -1029,9 +1121,9 @@
   let gridSize = 20;
 
   function loadGridSettings() {
-    const rawSnap = localStorage.getItem(LS_SNAP_ENABLED);
+    const rawSnap = storage.get(LS_SNAP_ENABLED);
     snapEnabled = rawSnap === null ? true : rawSnap === "true";
-    gridSize = parseInt(localStorage.getItem(LS_GRID_SIZE), 10) || 20;
+    gridSize = parseInt(storage.get(LS_GRID_SIZE), 10) || 20;
 
     document.getElementById("snapToggle").checked = snapEnabled;
     document.getElementById("gridSizeSelect").value = String(gridSize);
@@ -1044,11 +1136,11 @@
 
   document.getElementById("snapToggle").addEventListener("change", (e) => {
     snapEnabled = e.target.checked;
-    localStorage.setItem(LS_SNAP_ENABLED, String(snapEnabled));
+    storage.set(LS_SNAP_ENABLED, String(snapEnabled));
   });
   document.getElementById("gridSizeSelect").addEventListener("change", (e) => {
     gridSize = parseInt(e.target.value, 10);
-    localStorage.setItem(LS_GRID_SIZE, String(gridSize));
+    storage.set(LS_GRID_SIZE, String(gridSize));
     document.getElementById("canvas").style.setProperty("--grid-size", gridSize + "px");
   });
 
@@ -1057,12 +1149,12 @@
 
   function loadLayout() {
     try {
-      const raw = localStorage.getItem(LS_LAYOUT);
+      const raw = storage.get(LS_LAYOUT);
       return raw ? JSON.parse(raw) : {};
     } catch { return {}; }
   }
   function saveLayout(layout) {
-    localStorage.setItem(LS_LAYOUT, JSON.stringify(layout));
+    storage.set(LS_LAYOUT, JSON.stringify(layout));
   }
 
   function applyLayoutToWidgets() {
@@ -1125,6 +1217,7 @@
   function makeResizable(widget) {
     widget.addEventListener("pointerdown", () => bringToFront(widget));
     const resizeObserver = new ResizeObserver(() => {
+      if (window.innerWidth <= 680) return; // 忽略手機版 CSS 強制縮寬造成的尺寸變化,避免污染已儲存的版面
       clearTimeout(widget._resizeSaveTimer);
       widget._resizeSaveTimer = setTimeout(() => {
         if (snapEnabled) {
@@ -1146,7 +1239,7 @@
 
   document.getElementById("resetLayoutBtn").addEventListener("click", () => {
     if (!confirm("確定要把所有面板的位置與大小恢復成預設值嗎?")) return;
-    localStorage.removeItem(LS_LAYOUT);
+    storage.remove(LS_LAYOUT);
     applyLayoutToWidgets();
   });
 
@@ -1161,12 +1254,12 @@
   // ===== 個別面板的底框顯示偏好 =====
   function loadCardPrefs() {
     try {
-      const raw = localStorage.getItem(LS_CARD_PREFS);
+      const raw = storage.get(LS_CARD_PREFS);
       return raw ? { ...DEFAULT_CARD_PREFS, ...JSON.parse(raw) } : { ...DEFAULT_CARD_PREFS };
     } catch { return { ...DEFAULT_CARD_PREFS }; }
   }
   function saveCardPrefs(prefs) {
-    localStorage.setItem(LS_CARD_PREFS, JSON.stringify(prefs));
+    storage.set(LS_CARD_PREFS, JSON.stringify(prefs));
   }
   function applyCardPrefs() {
     const prefs = loadCardPrefs();
