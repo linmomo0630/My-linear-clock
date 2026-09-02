@@ -341,7 +341,7 @@
   }
   .drawer-row label { font-size: 0.85rem; color: var(--fg); }
 
-  select, input[type="color"], input[type="text"], input[type="time"] {
+  select, input[type="color"], input[type="text"], input[type="time"], input[type="number"] {
     background: var(--bg);
     border: 1px solid var(--border);
     color: var(--fg);
@@ -351,6 +351,8 @@
     font-size: 0.8rem;
   }
   input[type="color"] { padding: 2px; width: 40px; height: 30px; cursor: pointer; }
+  .drawer-row input[type="number"] { width: 64px; }
+  .drawer-row input[type="range"] { width: 124px; accent-color: var(--accent); }
 
   .btn {
     background: var(--bg);
@@ -390,8 +392,81 @@
     display: flex; align-items: center; justify-content: center;
   }
 
+  /* ===== v2:番茄鐘 / 護眼提醒面板 ===== */
+  .timer-display {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: clamp(1.6rem, 24cqw, 3rem);
+    font-weight: 700;
+    color: var(--fg);
+    letter-spacing: 2px;
+    text-shadow: 0 0 20px var(--accent-glow);
+    text-align: center;
+  }
+  .timer-phase {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--accent);
+    margin-top: 6px;
+    text-align: center;
+  }
+  .timer-sub { font-size: 0.7rem; color: var(--muted); margin-top: 4px; text-align: center; }
+  .widget[data-phase="work"] .timer-phase { color: #4cc2ff; }
+  .widget[data-phase="break"] .timer-phase,
+  .widget[data-phase="longBreak"] .timer-phase { color: #56d364; }
+  .timer-controls { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 12px; }
+  .timer-controls .btn { padding: 5px 10px; font-size: 0.72rem; }
+  .eye-enable { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--fg); margin-top: 12px; cursor: pointer; }
+  .eye-enable input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+
+  @keyframes widgetFlash {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); }
+    50% { box-shadow: 0 0 0 2px var(--accent), 0 0 22px 4px var(--accent-glow); }
+  }
+  .widget.flash { animation: widgetFlash 0.6s ease-in-out 3; }
+
+  /* ===== v2:提醒橫幅 ===== */
+  #alertBanner {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%) translateY(-140%);
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    border-top: none;
+    border-radius: 0 0 14px 14px;
+    padding: 16px 26px;
+    z-index: 400;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    min-width: 260px;
+    max-width: min(92vw, 420px);
+    text-align: center;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55), 0 0 24px var(--accent-glow);
+    transition: transform 0.35s ease;
+  }
+  #alertBanner.show { transform: translateX(-50%) translateY(0); }
+  #alertBanner .ab-msg { font-size: 0.95rem; color: var(--fg); line-height: 1.4; }
+  #alertBanner .ab-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  #alertBanner .ab-count[hidden] { display: none; }
+
+  .drawer-sub { font-size: 0.7rem; color: var(--muted); margin: -2px 0 12px; }
+  .perm-status { font-size: 0.75rem; color: var(--fg); }
+  .perm-status[data-state="denied"] { color: #f87171; }
+  .perm-status[data-state="granted"] { color: #56d364; }
+
   @media (prefers-reduced-motion: reduce) {
     .marker { animation: none; }
+    .widget.flash { animation: none; }
+    #alertBanner { transition: none; }
   }
 
   /* 手機最低限度修正:讓時鐘本體(時間+時間軸)在第一屏內完整可見,
@@ -497,10 +572,44 @@
         </div>
       </div>
 
+      <!-- ===== v2:番茄鐘面板 ===== -->
+      <div class="widget" id="widget-pomodoro" data-widget="pomodoro">
+        <div class="widget-handle">⠿⠿ 番茄鐘</div>
+        <div class="widget-body centered">
+          <div class="timer-display" id="pomoTime">25:00</div>
+          <div class="timer-phase" id="pomoPhase">待機</div>
+          <div class="timer-sub" id="pomoRounds">今日 0 輪</div>
+          <div class="timer-controls">
+            <button class="btn" id="pomoStartBtn">開始</button>
+            <button class="btn" id="pomoResetBtn">重設</button>
+            <button class="btn" id="pomoSkipBtn">跳過</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== v2:護眼提醒面板 ===== -->
+      <div class="widget" id="widget-eyecare" data-widget="eyecare">
+        <div class="widget-handle">⠿⠿ 護眼提醒</div>
+        <div class="widget-body centered">
+          <div class="timer-display" id="eyeTime">--:--</div>
+          <div class="timer-phase" id="eyePhase">已停用</div>
+          <label class="eye-enable">
+            <input type="checkbox" id="eyeEnablePanel" /> 啟用護眼提醒
+          </label>
+        </div>
+      </div>
+
     </div>
   </div>
 
   <div id="toast"></div>
+
+  <!-- ===== v2:提醒橫幅 ===== -->
+  <div id="alertBanner" role="alert" aria-live="assertive">
+    <div class="ab-msg" id="abMsg"></div>
+    <div class="ab-count" id="abCount" hidden>20</div>
+    <button class="btn" id="abDismiss">關閉</button>
+  </div>
 
   <!-- ===== 側邊設定抽屜 ===== -->
   <div id="drawerOverlay"></div>
@@ -558,6 +667,14 @@
         <label for="cardToggle-tasks">今日任務顯示底框</label>
         <input type="checkbox" id="cardToggle-tasks" data-widget="tasks" />
       </div>
+      <div class="drawer-row">
+        <label for="cardToggle-pomodoro">番茄鐘顯示底框</label>
+        <input type="checkbox" id="cardToggle-pomodoro" data-widget="pomodoro" />
+      </div>
+      <div class="drawer-row">
+        <label for="cardToggle-eyecare">護眼提醒顯示底框</label>
+        <input type="checkbox" id="cardToggle-eyecare" data-widget="eyecare" />
+      </div>
     </div>
 
     <div class="drawer-section">
@@ -594,6 +711,88 @@
       <h3>管理時段 · <span id="editingTemplateName">平日</span></h3>
       <div id="zoneList"></div>
       <button class="btn" id="addZoneBtn">+ 新增時段</button>
+    </div>
+
+    <div class="drawer-section">
+      <h3>番茄鐘</h3>
+      <div class="drawer-row">
+        <label for="pomoWorkMin">工作時長(分)</label>
+        <input type="number" id="pomoWorkMin" min="1" max="180" />
+      </div>
+      <div class="drawer-row">
+        <label for="pomoBreakMin">休息時長(分)</label>
+        <input type="number" id="pomoBreakMin" min="1" max="60" />
+      </div>
+      <div class="drawer-row">
+        <label for="pomoLongBreakMin">長休息時長(分)</label>
+        <input type="number" id="pomoLongBreakMin" min="1" max="120" />
+      </div>
+      <div class="drawer-row">
+        <label for="pomoRoundsPerLong">每幾輪長休息</label>
+        <input type="number" id="pomoRoundsPerLong" min="1" max="12" />
+      </div>
+      <p class="drawer-sub">時長變更會在下一個階段生效</p>
+      <div class="drawer-row">
+        <label for="pomoAlertOverlay">畫面提示</label>
+        <input type="checkbox" id="pomoAlertOverlay" data-alert="overlay" data-kind="pomodoro" />
+      </div>
+      <div class="drawer-row">
+        <label for="pomoAlertNotify">瀏覽器通知</label>
+        <input type="checkbox" id="pomoAlertNotify" data-alert="notify" data-kind="pomodoro" />
+      </div>
+      <div class="drawer-row">
+        <label for="pomoAlertSound">音效提示</label>
+        <input type="checkbox" id="pomoAlertSound" data-alert="sound" data-kind="pomodoro" />
+      </div>
+      <div class="drawer-row">
+        <label for="pomoAlertTitle">分頁標題閃爍</label>
+        <input type="checkbox" id="pomoAlertTitle" data-alert="titleFlash" data-kind="pomodoro" />
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <h3>護眼提醒</h3>
+      <div class="drawer-row">
+        <label for="eyeEnableDrawer">啟用</label>
+        <input type="checkbox" id="eyeEnableDrawer" />
+      </div>
+      <div class="drawer-row">
+        <label for="eyeIntervalMin">間隔(分)</label>
+        <input type="number" id="eyeIntervalMin" min="1" max="240" />
+      </div>
+      <div class="drawer-row">
+        <label for="eyeCountdownSec">倒數(秒)</label>
+        <input type="number" id="eyeCountdownSec" min="5" max="600" />
+      </div>
+      <div class="drawer-row">
+        <label for="eyeAlertOverlay">畫面提示</label>
+        <input type="checkbox" id="eyeAlertOverlay" data-alert="overlay" data-kind="eyecare" />
+      </div>
+      <div class="drawer-row">
+        <label for="eyeAlertNotify">瀏覽器通知</label>
+        <input type="checkbox" id="eyeAlertNotify" data-alert="notify" data-kind="eyecare" />
+      </div>
+      <div class="drawer-row">
+        <label for="eyeAlertSound">音效提示</label>
+        <input type="checkbox" id="eyeAlertSound" data-alert="sound" data-kind="eyecare" />
+      </div>
+      <div class="drawer-row">
+        <label for="eyeAlertTitle">分頁標題閃爍</label>
+        <input type="checkbox" id="eyeAlertTitle" data-alert="titleFlash" data-kind="eyecare" />
+      </div>
+    </div>
+
+    <div class="drawer-section">
+      <h3>提醒設定</h3>
+      <div class="drawer-row">
+        <label for="alertVolume">音效音量</label>
+        <input type="range" id="alertVolume" min="0" max="1" step="0.05" />
+      </div>
+      <div class="drawer-row">
+        <label>通知權限狀態</label>
+        <span class="perm-status" id="notifyPermStatus">—</span>
+      </div>
+      <button class="btn full" id="notifyRequestBtn">請求通知權限</button>
     </div>
   </div>
 
@@ -635,6 +834,8 @@
     statNext:     { x: 825, y: 170, w: 155, h: 150 },
     todo:  { x: 20,  y: 340, w: 470, h: 300 },
     tasks: { x: 510, y: 340, w: 470, h: 300 },
+    pomodoro: { x: 990, y: 20,  w: 240, h: 250 },
+    eyecare:  { x: 990, y: 290, w: 240, h: 190 },
   };
 
   const LS_TEMPLATES = "myClock_templates";
@@ -646,6 +847,11 @@
   const LS_CARD_PREFS = "myClock_cardPrefs";
   const LS_SNAP_ENABLED = "myClock_snapEnabled";
   const LS_GRID_SIZE = "myClock_gridSize";
+  const LS_POMO_CFG = "myClock_pomodoroCfg";
+  const LS_POMO_STATE = "myClock_pomodoroState";
+  const LS_EYE_CFG = "myClock_eyecareCfg";
+  const LS_EYE_STATE = "myClock_eyecareState";
+  const LS_ALERT_PREFS = "myClock_alertPrefs";
 
   // localStorage 在無痕模式 / 封鎖 cookie 的瀏覽器會直接拋錯,
   // 統一包一層,存取失敗時安靜降級,不讓整頁 script 中斷。
@@ -665,6 +871,7 @@
     clock: false,
     statElapsed: true, statRemaining: true, statCurrent: true, statNext: true,
     todo: true, tasks: true,
+    pomodoro: true, eyecare: true,
   };
 
   let templates = [];
@@ -1280,6 +1487,573 @@
     });
   });
 
+  // =====================================================================
+  //  v2:番茄鐘 + 護眼提醒
+  //  兩者獨立計時。核心原則:只存「目標結束時間戳」,每次 tick 用 Date.now()
+  //  重新計算剩餘時間 —— 背景分頁 setInterval 被降頻也不會累積誤差。
+  // =====================================================================
+
+  const POMO_DEFAULT_CFG = { workMin: 25, breakMin: 5, longBreakMin: 15, roundsPerLongBreak: 4 };
+  const EYE_DEFAULT_CFG = { enabled: false, intervalMin: 20, countdownSec: 20 };
+  const DEFAULT_ALERT_PREFS = {
+    pomodoro: { overlay: true, notify: false, sound: true, titleFlash: true },
+    eyecare:  { overlay: true, notify: false, sound: true, titleFlash: true },
+    soundVolume: 0.3,
+  };
+
+  let pomoCfg = { ...POMO_DEFAULT_CFG };
+  let eyeCfg = { ...EYE_DEFAULT_CFG };
+  let alertPrefs = JSON.parse(JSON.stringify(DEFAULT_ALERT_PREFS));
+
+  let pomo = {
+    phase: "idle",           // idle | work | break | longBreak
+    running: false,
+    endsAt: 0,               // epoch ms:目前階段結束的目標時刻(running 時有效)
+    remainingMs: 0,          // 暫停時凍結的剩餘毫秒
+    completedWorkInCycle: 0, // 距上次長休息已完成的工作輪數
+    roundsToday: 0,
+    roundsDate: "",
+  };
+  let eye = { running: false, endsAt: 0, breakEndsAt: 0 };
+
+  const ORIGINAL_TITLE = document.title;
+
+  // ---- 小工具 ----
+  function todayStr() {
+    const d = new Date();
+    return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
+  }
+  function fmtMMSS(ms) {
+    const total = Math.max(0, Math.round(ms / 1000));
+    return String(Math.floor(total / 60)).padStart(2, "0") + ":" + String(total % 60).padStart(2, "0");
+  }
+  function clampInt(v, min, max, dflt) {
+    v = parseInt(v, 10);
+    if (!isFinite(v)) return dflt;
+    return Math.min(max, Math.max(min, v));
+  }
+  function clampFloat(v, min, max, dflt) {
+    v = parseFloat(v);
+    if (!isFinite(v)) return dflt;
+    return Math.min(max, Math.max(min, v));
+  }
+
+  // ---- 儲存(一律走 storage 包裝層,不直接碰 localStorage)----
+  function loadPomo() {
+    try {
+      const c = JSON.parse(storage.get(LS_POMO_CFG) || "null");
+      if (c && typeof c === "object") {
+        pomoCfg = {
+          workMin: clampInt(c.workMin, 1, 180, POMO_DEFAULT_CFG.workMin),
+          breakMin: clampInt(c.breakMin, 1, 60, POMO_DEFAULT_CFG.breakMin),
+          longBreakMin: clampInt(c.longBreakMin, 1, 120, POMO_DEFAULT_CFG.longBreakMin),
+          roundsPerLongBreak: clampInt(c.roundsPerLongBreak, 1, 12, POMO_DEFAULT_CFG.roundsPerLongBreak),
+        };
+      }
+    } catch {}
+    try {
+      const s = JSON.parse(storage.get(LS_POMO_STATE) || "null");
+      if (s && typeof s === "object") {
+        pomo.phase = ["idle", "work", "break", "longBreak"].includes(s.phase) ? s.phase : "idle";
+        pomo.running = !!s.running;
+        pomo.endsAt = Number(s.endsAt) || 0;
+        pomo.remainingMs = Number(s.remainingMs) || 0;
+        pomo.completedWorkInCycle = Math.max(0, Number(s.completedWorkInCycle) || 0);
+        pomo.roundsToday = Math.max(0, Number(s.roundsToday) || 0);
+        pomo.roundsDate = typeof s.roundsDate === "string" ? s.roundsDate : todayStr();
+      }
+    } catch {}
+    if (!pomo.roundsDate) pomo.roundsDate = todayStr();
+    pomoDailyRollover();
+  }
+  function savePomoCfg() { storage.set(LS_POMO_CFG, JSON.stringify(pomoCfg)); }
+  function savePomoState() {
+    storage.set(LS_POMO_STATE, JSON.stringify({
+      phase: pomo.phase, running: pomo.running, endsAt: pomo.endsAt,
+      remainingMs: pomo.remainingMs, completedWorkInCycle: pomo.completedWorkInCycle,
+      roundsToday: pomo.roundsToday, roundsDate: pomo.roundsDate,
+    }));
+  }
+  function loadEye() {
+    try {
+      const c = JSON.parse(storage.get(LS_EYE_CFG) || "null");
+      if (c && typeof c === "object") {
+        eyeCfg = {
+          enabled: !!c.enabled,
+          intervalMin: clampInt(c.intervalMin, 1, 240, EYE_DEFAULT_CFG.intervalMin),
+          countdownSec: clampInt(c.countdownSec, 5, 600, EYE_DEFAULT_CFG.countdownSec),
+        };
+      }
+    } catch {}
+    try {
+      const s = JSON.parse(storage.get(LS_EYE_STATE) || "null");
+      if (s && typeof s === "object") {
+        eye.endsAt = Number(s.endsAt) || 0;
+        eye.breakEndsAt = Number(s.breakEndsAt) || 0;
+      }
+    } catch {}
+    eye.running = eyeCfg.enabled;
+    if (eye.running && !eye.endsAt) eye.endsAt = Date.now() + eyeIntervalMs();
+  }
+  function saveEyeCfg() { storage.set(LS_EYE_CFG, JSON.stringify(eyeCfg)); }
+  function saveEyeState() {
+    storage.set(LS_EYE_STATE, JSON.stringify({ endsAt: eye.endsAt, breakEndsAt: eye.breakEndsAt }));
+  }
+  function loadAlertPrefs() {
+    try {
+      const p = JSON.parse(storage.get(LS_ALERT_PREFS) || "null");
+      if (p && typeof p === "object") {
+        ["pomodoro", "eyecare"].forEach((k) => {
+          if (p[k] && typeof p[k] === "object") {
+            alertPrefs[k] = {
+              overlay: !!p[k].overlay, notify: !!p[k].notify,
+              sound: !!p[k].sound, titleFlash: !!p[k].titleFlash,
+            };
+          }
+        });
+        alertPrefs.soundVolume = clampFloat(p.soundVolume, 0, 1, DEFAULT_ALERT_PREFS.soundVolume);
+      }
+    } catch {}
+  }
+  function saveAlertPrefs() { storage.set(LS_ALERT_PREFS, JSON.stringify(alertPrefs)); }
+
+  function eyeIntervalMs() { return eyeCfg.intervalMin * 60000; }
+  function eyeCountdownMs() { return eyeCfg.countdownSec * 1000; }
+  function pomoPhaseMs(phase) {
+    if (phase === "break") return pomoCfg.breakMin * 60000;
+    if (phase === "longBreak") return pomoCfg.longBreakMin * 60000;
+    return pomoCfg.workMin * 60000; // work 與 idle 顯示皆用工作時長
+  }
+  const PHASE_LABEL = { idle: "待機", work: "工作中", break: "休息", longBreak: "長休息" };
+  function pomoPhaseStartMsg(phase) {
+    return phase === "work" ? "休息結束,開始工作"
+      : phase === "longBreak" ? "完成一輪,長休息時間"
+      : "工作階段結束,休息一下";
+  }
+
+  // ---- DOM 參照 ----
+  const widgetPomo = document.getElementById("widget-pomodoro");
+  const widgetEye = document.getElementById("widget-eyecare");
+  const pomoTimeEl = document.getElementById("pomoTime");
+  const pomoPhaseEl = document.getElementById("pomoPhase");
+  const pomoRoundsEl = document.getElementById("pomoRounds");
+  const pomoStartBtn = document.getElementById("pomoStartBtn");
+  const pomoResetBtn = document.getElementById("pomoResetBtn");
+  const pomoSkipBtn = document.getElementById("pomoSkipBtn");
+  const eyeTimeEl = document.getElementById("eyeTime");
+  const eyePhaseEl = document.getElementById("eyePhase");
+  const eyeEnablePanel = document.getElementById("eyeEnablePanel");
+  const eyeEnableDrawer = document.getElementById("eyeEnableDrawer");
+  const eyeIntervalEl = document.getElementById("eyeIntervalMin");
+  const eyeCountdownEl = document.getElementById("eyeCountdownSec");
+  const alertBanner = document.getElementById("alertBanner");
+  const abMsg = document.getElementById("abMsg");
+  const abCount = document.getElementById("abCount");
+  const abDismiss = document.getElementById("abDismiss");
+  const notifyPermStatusEl = document.getElementById("notifyPermStatus");
+  const notifyRequestBtn = document.getElementById("notifyRequestBtn");
+  const alertVolumeEl = document.getElementById("alertVolume");
+
+  // ---- 番茄鐘狀態機 ----
+  function pomoDailyRollover() {
+    const t = todayStr();
+    if (pomo.roundsDate !== t) { pomo.roundsDate = t; pomo.roundsToday = 0; }
+  }
+  function pomoRemainingMs() {
+    if (pomo.phase === "idle") return pomoPhaseMs("work");
+    if (pomo.running) return Math.max(0, pomo.endsAt - Date.now());
+    return Math.max(0, pomo.remainingMs);
+  }
+  function pomoStart() {
+    if (pomo.phase === "idle") {
+      pomo.phase = "work";
+      pomo.endsAt = Date.now() + pomoPhaseMs("work");
+    } else if (!pomo.running) {
+      pomo.endsAt = Date.now() + Math.max(0, pomo.remainingMs);
+    }
+    pomo.running = true;
+    pomo.remainingMs = 0;
+    savePomoState();
+    renderPomo();
+  }
+  function pomoPause() {
+    if (!pomo.running || pomo.phase === "idle") return;
+    pomo.remainingMs = Math.max(0, pomo.endsAt - Date.now());
+    pomo.running = false;
+    savePomoState();
+    renderPomo();
+  }
+  function pomoReset() {
+    pomo.phase = "idle";
+    pomo.running = false;
+    pomo.endsAt = 0;
+    pomo.remainingMs = 0;
+    pomo.completedWorkInCycle = 0;
+    savePomoState();
+    renderPomo();
+  }
+  // 推進到下一階段。baseTime 為「上一階段結束的時刻」,補算過期階段時傳入舊 endsAt。
+  function pomoAdvance(fireAlert, baseTime) {
+    const ended = pomo.phase;
+    let next;
+    if (ended === "work") {
+      pomo.completedWorkInCycle += 1;
+      pomoDailyRollover();
+      pomo.roundsToday += 1;
+      next = pomo.completedWorkInCycle >= pomoCfg.roundsPerLongBreak ? "longBreak" : "break";
+    } else {
+      if (ended === "longBreak") pomo.completedWorkInCycle = 0;
+      next = "work";
+    }
+    pomo.phase = next;
+    pomo.running = true;
+    pomo.remainingMs = 0;
+    pomo.endsAt = (baseTime || Date.now()) + pomoPhaseMs(next);
+    if (fireAlert) fireAlerts("pomodoro", pomoPhaseStartMsg(next));
+    savePomoState();
+    renderPomo();
+  }
+  function pomoSkip() {
+    if (pomo.phase === "idle") return;
+    pomoAdvance(false, Date.now());
+  }
+  // 處理「過期」的階段:重新整理或背景分頁久未更新後,把時間軸補到正確的當前階段。
+  function pomoResolveOverdue() {
+    if (!pomo.running || pomo.phase === "idle") return;
+    let guard = 0, lastEdge = 0;
+    while (pomo.running && Date.now() >= pomo.endsAt && guard++ < 5000) {
+      lastEdge = pomo.endsAt;
+      pomoAdvance(false, pomo.endsAt);
+    }
+    // 只有最後一次轉場發生在 45 秒內才補提醒,避免久違重開時一次噴一堆
+    if (lastEdge && Date.now() - lastEdge < 45000) {
+      fireAlerts("pomodoro", pomoPhaseStartMsg(pomo.phase));
+    }
+    if (lastEdge) { savePomoState(); renderPomo(); }
+  }
+  function renderPomo() {
+    pomoDailyRollover();
+    pomoTimeEl.textContent = fmtMMSS(pomoRemainingMs());
+    pomoPhaseEl.textContent = (pomo.phase === "idle")
+      ? PHASE_LABEL.idle
+      : (pomo.running ? "" : "已暫停 · ") + PHASE_LABEL[pomo.phase];
+    pomoRoundsEl.textContent = "今日 " + pomo.roundsToday + " 輪";
+    pomoStartBtn.textContent = pomo.running ? "暫停" : "開始";
+    widgetPomo.dataset.phase = pomo.phase;
+  }
+
+  // ---- 護眼提醒 ----
+  function setEyeEnabled(on) {
+    eyeCfg.enabled = on;
+    eye.running = on;
+    if (on) {
+      eye.endsAt = Date.now() + eyeIntervalMs();
+      eye.breakEndsAt = 0;
+    } else {
+      eye.breakEndsAt = 0;
+      if (bannerKind === "eyecare") hideAlertBanner();
+      stopTitleFlash();
+    }
+    saveEyeCfg();
+    saveEyeState();
+    syncEyeToggles();
+    renderEye();
+  }
+  function syncEyeToggles() {
+    eyeEnablePanel.checked = eyeCfg.enabled;
+    eyeEnableDrawer.checked = eyeCfg.enabled;
+  }
+  function triggerEyeCare() {
+    eye.breakEndsAt = Date.now() + eyeCountdownMs();
+    saveEyeState();
+    fireAlerts("eyecare", "護眼時間 — 看向 6 公尺外,放鬆眼睛");
+    showAlertBanner({ kind: "eyecare", msg: "護眼時間 — 看向遠方", countdownUntil: eye.breakEndsAt });
+    renderEye();
+  }
+  function endEyeCareBreak() {
+    eye.breakEndsAt = 0;
+    eye.endsAt = Date.now() + eyeIntervalMs();
+    saveEyeState();
+    if (bannerKind === "eyecare") hideAlertBanner();
+    stopTitleFlash();
+    renderEye();
+  }
+  function renderEye() {
+    if (!eye.running) {
+      eyeTimeEl.textContent = "--:--";
+      eyePhaseEl.textContent = "已停用";
+      widgetEye.dataset.phase = "idle";
+      return;
+    }
+    if (eye.breakEndsAt) {
+      eyeTimeEl.textContent = String(Math.max(0, Math.ceil((eye.breakEndsAt - Date.now()) / 1000)));
+      eyePhaseEl.textContent = "休息中 · 看遠方";
+      widgetEye.dataset.phase = "break";
+      return;
+    }
+    eyeTimeEl.textContent = fmtMMSS(eye.endsAt - Date.now());
+    eyePhaseEl.textContent = "下次提醒";
+    widgetEye.dataset.phase = "work";
+  }
+  function eyeResolveOverdue() {
+    if (!eye.running) return;
+    const now = Date.now();
+    if (eye.breakEndsAt) {
+      if (now >= eye.breakEndsAt) endEyeCareBreak();
+      return;
+    }
+    // 過期超過一個完整間隔(久未回來)→ 直接重排,不補提醒
+    if (now >= eye.endsAt && now - eye.endsAt > eyeIntervalMs()) {
+      eye.endsAt = now + eyeIntervalMs();
+      saveEyeState();
+    }
+  }
+
+  // ---- 提醒方式 ----
+  let audioCtx = null;
+  function initAudio() {
+    if (audioCtx) return;
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch {}
+  }
+  function beep(count, freq) {
+    initAudio();
+    if (!audioCtx) return;
+    try {
+      if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+      const vol = clampFloat(alertPrefs.soundVolume, 0, 1, 0.3);
+      if (vol <= 0) return;
+      let t = audioCtx.currentTime + 0.02;
+      for (let i = 0; i < count; i++) {
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = "sine";
+        o.frequency.value = freq;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(vol, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
+        o.connect(g);
+        g.connect(audioCtx.destination);
+        o.start(t);
+        o.stop(t + 0.26);
+        t += 0.32;
+      }
+    } catch {}
+  }
+
+  let titleFlashTimer = null;
+  function startTitleFlash(msg) {
+    stopTitleFlash();
+    let on = true;
+    document.title = "🔔 " + msg; // 立即切換,不等第一個 interval
+    titleFlashTimer = setInterval(() => {
+      on = !on;
+      document.title = on ? "🔔 " + msg : ORIGINAL_TITLE;
+    }, 1000);
+  }
+  function stopTitleFlash() {
+    if (titleFlashTimer) { clearInterval(titleFlashTimer); titleFlashTimer = null; }
+    document.title = ORIGINAL_TITLE;
+  }
+
+  function notifyPermState() {
+    if (!("Notification" in window)) return "unsupported";
+    return Notification.permission;
+  }
+  const NOTIFY_LABEL = {
+    unsupported: "此瀏覽器不支援",
+    default: "尚未詢問",
+    granted: "已允許",
+    denied: "已封鎖(需到瀏覽器網站設定手動開啟)",
+  };
+  function renderNotifyStatus() {
+    const st = notifyPermState();
+    notifyPermStatusEl.textContent = NOTIFY_LABEL[st] || st;
+    notifyPermStatusEl.dataset.state = st;
+    notifyRequestBtn.disabled = st !== "default";
+    notifyRequestBtn.textContent = st === "default" ? "請求通知權限"
+      : st === "granted" ? "通知已開啟"
+      : st === "denied" ? "通知已被封鎖" : "此瀏覽器不支援";
+  }
+  // 不用 async:requestPermission() 必須在使用者手勢的同一個同步呼叫堆疊中觸發。
+  // 同時相容新版(回傳 Promise)與舊版(只吃 callback)兩種簽名。
+  function requestNotifyPermission() {
+    if (!("Notification" in window)) { renderNotifyStatus(); return; }
+    if (Notification.permission !== "default") { renderNotifyStatus(); return; }
+    let settled = false;
+    const after = () => {
+      if (settled) return;
+      settled = true;
+      renderNotifyStatus();
+      // 請求結束但權限仍是 default:通常是瀏覽器把詢問靜音成網址列小圖示
+      if (Notification.permission === "default") {
+        showToast("瀏覽器沒有跳出通知詢問,請點網址列的鈴鐺 / 鎖頭圖示手動允許");
+      }
+    };
+    try {
+      const ret = Notification.requestPermission(after);
+      if (ret && typeof ret.then === "function") ret.then(after, after);
+    } catch (err) {
+      renderNotifyStatus();
+    }
+  }
+  // 權限可能在 app 外被改動(瀏覽器設定 / 其他分頁 / DevTools)——用 Permissions API 即時同步顯示
+  function watchNotifyPermission() {
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        navigator.permissions.query({ name: "notifications" })
+          .then((s) => { s.onchange = renderNotifyStatus; })
+          .catch(() => {});
+      }
+    } catch (err) {}
+  }
+
+  function flashWidget(el) {
+    el.classList.remove("flash");
+    void el.offsetWidth; // 強制 reflow 以重播動畫
+    el.classList.add("flash");
+    setTimeout(() => el.classList.remove("flash"), 2200);
+  }
+
+  let bannerKind = null;
+  let bannerAutoTimer = null;
+  function showAlertBanner({ kind, msg, countdownUntil, autoDismissMs }) {
+    bannerKind = kind || null;
+    abMsg.textContent = msg;
+    if (countdownUntil) {
+      abCount.hidden = false;
+      abCount.textContent = String(Math.max(0, Math.ceil((countdownUntil - Date.now()) / 1000)));
+      abDismiss.textContent = "跳過";
+    } else {
+      abCount.hidden = true;
+      abDismiss.textContent = "關閉";
+    }
+    alertBanner.classList.add("show");
+    clearTimeout(bannerAutoTimer);
+    if (autoDismissMs) bannerAutoTimer = setTimeout(hideAlertBanner, autoDismissMs);
+  }
+  function hideAlertBanner() {
+    alertBanner.classList.remove("show");
+    bannerKind = null;
+    clearTimeout(bannerAutoTimer);
+  }
+
+  // 依 alertPrefs[kind] 觸發啟用的提醒方式。eyecare 的倒數橫幅另由 triggerEyeCare 顯示。
+  function fireAlerts(kind, msg) {
+    const p = alertPrefs[kind] || {};
+    if (p.sound) beep(kind === "eyecare" ? 3 : 2, kind === "eyecare" ? 620 : 880);
+    // 標題閃爍只在分頁不在前景時才有意義(前景時 focus 事件會立即清掉)
+    if (p.titleFlash && document.hidden) startTitleFlash(kind === "eyecare" ? "該護眼囉" : msg);
+    let notified = false;
+    if (p.notify && ("Notification" in window) && Notification.permission === "granted") {
+      try {
+        new Notification(kind === "eyecare" ? "護眼提醒" : "番茄鐘", { body: msg, tag: "myclock-" + kind });
+        notified = true;
+      } catch {}
+    }
+    if (p.overlay) flashWidget(kind === "eyecare" ? widgetEye : widgetPomo);
+    // 番茄鐘橫幅:overlay 開啟,或「通知被要求但發不出來」時當 fallback
+    if (kind === "pomodoro" && bannerKind !== "eyecare" && (p.overlay || (p.notify && !notified))) {
+      showAlertBanner({ kind: "pomodoro", msg, autoDismissMs: 10000 });
+    }
+  }
+
+  // ---- 主 tick:1 秒一次,另在切回分頁時立即補跑一次 ----
+  function masterTick() {
+    pomoResolveOverdue();
+    renderPomo();
+
+    if (eye.running) {
+      if (eye.breakEndsAt) {
+        if (Date.now() >= eye.breakEndsAt) endEyeCareBreak();
+      } else if (Date.now() >= eye.endsAt) {
+        triggerEyeCare();
+      }
+    }
+    if (bannerKind === "eyecare" && eye.breakEndsAt) {
+      abCount.textContent = String(Math.max(0, Math.ceil((eye.breakEndsAt - Date.now()) / 1000)));
+    }
+    renderEye();
+  }
+
+  // ---- 事件綁定 ----
+  pomoStartBtn.addEventListener("click", () => {
+    initAudio();
+    if (pomo.running) pomoPause(); else pomoStart();
+  });
+  pomoResetBtn.addEventListener("click", pomoReset);
+  pomoSkipBtn.addEventListener("click", pomoSkip);
+  eyeEnablePanel.addEventListener("change", (e) => setEyeEnabled(e.target.checked));
+  eyeEnableDrawer.addEventListener("change", (e) => setEyeEnabled(e.target.checked));
+  abDismiss.addEventListener("click", () => {
+    if (bannerKind === "eyecare" && eye.breakEndsAt) endEyeCareBreak();
+    else hideAlertBanner();
+  });
+
+  const POMO_CFG_INPUTS = {
+    workMin: ["pomoWorkMin", 1, 180],
+    breakMin: ["pomoBreakMin", 1, 60],
+    longBreakMin: ["pomoLongBreakMin", 1, 120],
+    roundsPerLongBreak: ["pomoRoundsPerLong", 1, 12],
+  };
+  Object.entries(POMO_CFG_INPUTS).forEach(([key, [id, min, max]]) => {
+    const el = document.getElementById(id);
+    el.addEventListener("change", () => {
+      pomoCfg[key] = clampInt(el.value, min, max, POMO_DEFAULT_CFG[key]);
+      el.value = pomoCfg[key];
+      savePomoCfg();
+      renderPomo();
+    });
+  });
+
+  eyeIntervalEl.addEventListener("change", () => {
+    eyeCfg.intervalMin = clampInt(eyeIntervalEl.value, 1, 240, EYE_DEFAULT_CFG.intervalMin);
+    eyeIntervalEl.value = eyeCfg.intervalMin;
+    saveEyeCfg();
+    if (eye.running && !eye.breakEndsAt) { eye.endsAt = Date.now() + eyeIntervalMs(); saveEyeState(); }
+    renderEye();
+  });
+  eyeCountdownEl.addEventListener("change", () => {
+    eyeCfg.countdownSec = clampInt(eyeCountdownEl.value, 5, 600, EYE_DEFAULT_CFG.countdownSec);
+    eyeCountdownEl.value = eyeCfg.countdownSec;
+    saveEyeCfg();
+  });
+
+  document.querySelectorAll("[data-alert][data-kind]").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      alertPrefs[cb.dataset.kind][cb.dataset.alert] = cb.checked;
+      saveAlertPrefs();
+      if (cb.dataset.alert === "notify" && cb.checked) requestNotifyPermission();
+    });
+  });
+  notifyRequestBtn.addEventListener("click", requestNotifyPermission);
+  // 每次打開設定抽屜都重新讀一次目前權限,避免顯示過時
+  settingsToggle.addEventListener("click", renderNotifyStatus);
+  alertVolumeEl.addEventListener("input", () => {
+    alertPrefs.soundVolume = clampFloat(alertVolumeEl.value, 0, 1, 0.3);
+    saveAlertPrefs();
+  });
+  alertVolumeEl.addEventListener("change", () => { initAudio(); beep(1, 780); }); // 放開滑桿時試聽
+
+  function renderV2SettingsUI() {
+    Object.entries(POMO_CFG_INPUTS).forEach(([key, [id]]) => {
+      document.getElementById(id).value = pomoCfg[key];
+    });
+    eyeIntervalEl.value = eyeCfg.intervalMin;
+    eyeCountdownEl.value = eyeCfg.countdownSec;
+    alertVolumeEl.value = alertPrefs.soundVolume;
+    document.querySelectorAll("[data-alert][data-kind]").forEach((cb) => {
+      cb.checked = !!(alertPrefs[cb.dataset.kind] || {})[cb.dataset.alert];
+    });
+    syncEyeToggles();
+    renderNotifyStatus();
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) { stopTitleFlash(); masterTick(); renderNotifyStatus(); }
+  });
+  window.addEventListener("focus", () => { stopTitleFlash(); masterTick(); });
+  document.addEventListener("pointerdown", initAudio, { once: true });
+
   // ===== 啟動 =====
   loadState();
   loadGridSettings();
@@ -1293,6 +2067,19 @@
   setInterval(tick, 1000);
   loadTodos();
   loadTasks();
+
+  loadAlertPrefs();
+  loadPomo();
+  loadEye();
+  renderV2SettingsUI();
+  renderNotifyStatus();
+  watchNotifyPermission();
+  pomoResolveOverdue();
+  eyeResolveOverdue();
+  renderPomo();
+  renderEye();
+  masterTick();
+  setInterval(masterTick, 1000);
 </script>
 </body>
 </html>
