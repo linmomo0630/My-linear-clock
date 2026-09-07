@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>我的線性時鐘</title>
+<title>MOMO'S DECK</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -47,19 +47,32 @@
       var(--bg);
     color: var(--fg);
     font-family: 'Inter', sans-serif;
-    padding: 48px 0 60px;
+    padding: 40px 0 60px;
   }
 
-  .page-header { text-align: center; margin-bottom: 32px; }
-  h1 {
+  /* ===== 儀表板抬頭(置中)===== */
+  #deckHeader { text-align: center; margin-bottom: 28px; }
+  .deck-title {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 1.1rem;
-    letter-spacing: 3px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: 5px;
     text-transform: uppercase;
-    color: var(--muted);
-    margin: 0 0 4px;
+    color: var(--fg);
+    margin: 0 0 5px;
   }
-  .subtitle { color: var(--muted); font-size: 0.85rem; margin: 0; }
+  .deck-sub {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 2px;
+    color: var(--label);
+    white-space: nowrap;
+  }
+  .deck-ver { color: var(--label); opacity: 0.75; }
 
   /* ===== 可拖動面板的畫布 ===== */
   /* 畫布尺寸由 JS 依面板分布動態撐大;safe center 讓它比視窗窄時置中、比視窗寬時靠左不裁切 */
@@ -497,11 +510,15 @@
   /* 手機最低限度修正:讓時鐘本體(時間+時間軸)在第一屏內完整可見,
      不動到其餘面板的自由排版座標 */
   @media (max-width: 680px) {
+    /* 左上按鈕列 → 抬頭往下讓開 */
+    body { padding-top: 72px; }
     #canvas { margin: 0; }
     .widget[data-widget="clock"] {
       width: calc(100vw - 40px) !important;
       height: auto !important;
     }
+    .deck-title { font-size: 1rem; letter-spacing: 3px; }
+    .deck-sub { flex-wrap: wrap; white-space: normal; gap: 3px 10px; font-size: 0.62rem; letter-spacing: 1px; }
   }
 </style>
 </head>
@@ -510,10 +527,13 @@
   <button id="settingsToggle" title="設定" aria-label="開啟設定">⚙</button>
   <button id="editModeToggle" title="切換編輯模式">✏ 編輯版面</button>
 
-  <div class="page-header">
-    <h1>My Linear Clock</h1>
-    <p class="subtitle">從零打造 · 屬於我自己的版本</p>
-  </div>
+  <header id="deckHeader">
+    <h1 class="deck-title">MOMO'S DECK</h1>
+    <div class="deck-sub">
+      <span>TIMELINE · TASKS · FOCUS · EYECARE</span>
+      <span class="deck-ver">v2.0</span>
+    </div>
+  </header>
 
   <div id="canvasWrap">
     <div id="canvas">
@@ -2129,6 +2149,13 @@
   renderEye();
   masterTick();
   setInterval(masterTick, 1000);
+
+  // 視窗大小改變(含跨越手機斷點,會改到時鐘寬度)→ 重算畫布尺寸
+  let _resizeTimer = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(_resizeTimer);
+    _resizeTimer = setTimeout(updateCanvasSize, 150);
+  });
 </script>
 </body>
 </html>
