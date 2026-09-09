@@ -429,6 +429,28 @@
     display: flex; align-items: center; justify-content: center;
   }
 
+  /* 手動覆蓋提示(可點,回到自動排程)*/
+  .override-note {
+    display: block;
+    width: 100%;
+    margin-top: 10px;
+    padding: 6px 10px;
+    background: rgba(139, 123, 255, 0.1);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    font-family: 'Inter', sans-serif;
+    font-size: 0.72rem;
+    text-align: left;
+    cursor: pointer;
+  }
+  .override-note:hover { color: var(--fg); border-color: var(--accent); }
+
+  /* 每週排程列:星期名靠左、下拉靠右 */
+  .week-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .week-row label { font-size: 0.85rem; color: var(--fg); flex-shrink: 0; }
+  .week-row select { flex: 1 1 auto; min-width: 0; max-width: 190px; }
+
   /* ===== v2:番茄鐘 / 護眼提醒面板 ===== */
   .timer-display {
     font-family: 'JetBrains Mono', monospace;
@@ -752,6 +774,13 @@
         <button class="btn icon-btn" id="addTemplateBtn" title="新增範本" aria-label="新增範本">+</button>
         <button class="btn danger icon-btn" id="deleteTemplateBtn" title="刪除範本" aria-label="刪除範本">✕</button>
       </div>
+      <button class="override-note" id="clearOverrideBtn" hidden>今日手動指定 · 點此回到自動排程</button>
+    </div>
+
+    <div class="drawer-section">
+      <h3>每週排程</h3>
+      <p class="drawer-sub">週一到週五自動套用指定範本;週末與「不指定」維持手動選擇</p>
+      <div id="weekScheduleList"></div>
     </div>
 
     <div class="drawer-section">
@@ -900,6 +929,8 @@
   const LS_EYE_CFG = "myClock_eyecareCfg";
   const LS_EYE_STATE = "myClock_eyecareState";
   const LS_ALERT_PREFS = "myClock_alertPrefs";
+  const LS_WEEK_SCHEDULE = "myClock_weekSchedule";   // { "1".."5": templateId | "" }
+  const LS_TPL_OVERRIDE = "myClock_templateOverride"; // { date: "YYYY-M-D", templateId }
 
   // localStorage 在無痕模式 / 封鎖 cookie 的瀏覽器會直接拋錯,
   // 統一包一層,存取失敗時安靜降級,不讓整頁 script 中斷。
@@ -1099,6 +1130,13 @@
     const h = now.getHours(), m = now.getMinutes(), s = now.getSeconds();
     const hourFloat = h + m / 60 + s / 3600;
 
+    // 跨日偵測:只在日期真的變了才重算範本,不是每秒都算
+    const today = todayStr();
+    if (today !== lastScheduleDate) {
+      lastScheduleDate = today;
+      applyTemplateForToday(true);
+    }
+
     marker.style.left = (hourFloat / 24 * 100) + "%";
 
     document.getElementById("liveTime").textContent =
@@ -1225,9 +1263,147 @@
     document.getElementById("deleteTemplateBtn").disabled = templates.length <= 1;
   }
 
+  // =====================================================================
+  //  範本依星期自動切換
+  //  weekSchedule: { 1..5: templateId | "" }  週一~週五各綁一個範本
+  //  templateOverride: { date, templateId }   當天手動指定,過午夜自動失效
+  // =====================================================================
+  const WEEKDAY_NAME = { 1: "週一", 2: "週二", 3: "週三", 4: "週四", 5: "週五" };
+  let weekSchedule = { 1: "", 2: "", 3: "", 4: "", 5: "" };
+  let templateOverride = null;
+  let lastScheduleDate = "";
+  const weekScheduleList = document.getElementById("weekScheduleList");
+  const clearOverrideBtn = document.getElementById("clearOverrideBtn");
+
+  function loadWeekSchedule() {
+    weekSchedule = { 1: "", 2: "", 3: "", 4: "", 5: "" };
+    try {
+      const raw = JSON.parse(storage.get(LS_WEEK_SCHEDULE) || "null");
+      if (raw && typeof raw === "object") {
+        for (let d = 1; d <= 5; d++) {
+          if (typeof raw[d] === "string") weekSchedule[d] = raw[d];
+        }
+      }
+    } catch {}
+  }
+  function saveWeekSchedule() { storage.set(LS_WEEK_SCHEDULE, JSON.stringify(weekSchedule)); }
+
+  function loadTemplateOverride() {
+    templateOverride = null;
+    try {
+      const raw = JSON.parse(storage.get(LS_TPL_OVERRIDE) || "null");
+      if (raw && typeof raw.date === "string" && typeof raw.templateId === "string") {
+        templateOverride = { date: raw.date, templateId: raw.templateId };
+      }
+    } catch {}
+  }
+  function saveTemplateOverride() {
+    if (templateOverride) storage.set(LS_TPL_OVERRIDE, JSON.stringify(templateOverride));
+    else storage.remove(LS_TPL_OVERRIDE);
+  }
+
+  // 今天(週一~週五)排程指定的範本 id;週末 / 不指定 / 指向已刪範本 → null
+  function scheduledTemplateIdForToday() {
+    const dow = new Date().getDay(); // 0=日 .. 6=六
+    if (dow < 1 || dow > 5) return null;
+    const id = weekSchedule[dow];
+    return (id && templates.some((t) => t.id === id)) ? id : null;
+  }
+
+  function overrideActiveToday() {
+    return !!(templateOverride && templateOverride.date === todayStr()
+      && templates.some((t) => t.id === templateOverride.templateId));
+  }
+
+  function updateScheduleBadge() {
+    clearOverrideBtn.hidden = !overrideActiveToday();
+  }
+
+  // 依「手動覆蓋 → 每週排程 → 維持現狀」的優先序決定今天該用哪個範本
+  function applyTemplateForToday(rerender) {
+    let targetId = null;
+    if (overrideActiveToday()) {
+      targetId = templateOverride.templateId;
+    } else {
+      if (templateOverride && templateOverride.date !== todayStr()) {
+        templateOverride = null;          // 過期的覆蓋清掉
+        saveTemplateOverride();
+      }
+      targetId = scheduledTemplateIdForToday();
+    }
+    if (targetId && targetId !== activeTemplateId) {
+      activeTemplateId = targetId;
+      saveActiveTemplate();
+      if (rerender) rerenderActiveTemplate();
+    }
+    updateScheduleBadge();
+  }
+
+  function rerenderActiveTemplate() {
+    renderTemplateSelect();
+    editingTemplateName.textContent = getCurrentTemplate().name;
+    renderZoneEditor();
+    renderZonesAndLegend();
+    renderTrackTicks();
+    tick();
+  }
+
+  // 手動切換範本時呼叫:週一~週五且與排程不同 → 記一筆當天覆蓋;否則清掉
+  function recordManualOverride() {
+    const dow = new Date().getDay();
+    if (dow < 1 || dow > 5) { return; }   // 週末不進入覆蓋機制
+    const autoId = scheduledTemplateIdForToday();
+    if (!autoId || autoId === activeTemplateId) {
+      templateOverride = null;
+    } else {
+      templateOverride = { date: todayStr(), templateId: activeTemplateId };
+    }
+    saveTemplateOverride();
+  }
+
+  function renderWeekScheduleUI() {
+    weekScheduleList.innerHTML = "";
+    for (let day = 1; day <= 5; day++) {
+      const row = document.createElement("div");
+      row.className = "week-row";
+      const label = document.createElement("label");
+      label.textContent = WEEKDAY_NAME[day];
+      label.setAttribute("for", "weekDay" + day);
+      const sel = document.createElement("select");
+      sel.id = "weekDay" + day;
+      const none = document.createElement("option");
+      none.value = "";
+      none.textContent = "不指定";
+      sel.appendChild(none);
+      templates.forEach((t) => {
+        const o = document.createElement("option");
+        o.value = t.id;
+        o.textContent = t.name;
+        sel.appendChild(o);
+      });
+      sel.value = weekSchedule[day] || "";
+      sel.addEventListener("change", () => {
+        weekSchedule[day] = sel.value;
+        saveWeekSchedule();
+        applyTemplateForToday(true);   // 若改到的是今天,立即套用
+      });
+      row.appendChild(label);
+      row.appendChild(sel);
+      weekScheduleList.appendChild(row);
+    }
+  }
+
+  clearOverrideBtn.addEventListener("click", () => {
+    templateOverride = null;
+    saveTemplateOverride();
+    applyTemplateForToday(true);
+  });
+
   templateSelect.addEventListener("change", (e) => {
     activeTemplateId = e.target.value;
     saveActiveTemplate();
+    recordManualOverride();
+    updateScheduleBadge();
     editingTemplateName.textContent = getCurrentTemplate().name;
     renderZoneEditor();
     renderZonesAndLegend();
@@ -1245,7 +1421,10 @@
     activeTemplateId = newTemplate.id;
     saveTemplates();
     saveActiveTemplate();
+    recordManualOverride();
+    updateScheduleBadge();
     renderTemplateSelect();
+    renderWeekScheduleUI();
     renderZoneEditor();
     renderZonesAndLegend();
     renderTrackTicks();
@@ -1261,18 +1440,35 @@
     t.name = trimmed;
     saveTemplates();
     renderTemplateSelect();
+    renderWeekScheduleUI();
   });
 
   document.getElementById("deleteTemplateBtn").addEventListener("click", () => {
     if (templates.length <= 1) return;
     const t = getCurrentTemplate();
     if (!confirm(`確定要刪除範本「${t.name}」嗎?`)) return;
+    const deletedId = t.id;
     const idx = templates.indexOf(t);
     templates.splice(idx, 1);
     activeTemplateId = templates[0].id;
     saveTemplates();
     saveActiveTemplate();
+
+    // 清掉指向已刪範本的髒資料:每週排程綁到它的那幾天改回「不指定」
+    let scheduleChanged = false;
+    for (let d = 1; d <= 5; d++) {
+      if (weekSchedule[d] === deletedId) { weekSchedule[d] = ""; scheduleChanged = true; }
+    }
+    if (scheduleChanged) saveWeekSchedule();
+    if (templateOverride && templateOverride.templateId === deletedId) {
+      templateOverride = null;
+      saveTemplateOverride();
+    }
+    applyTemplateForToday(false);   // 重新依排程決定今天該用哪個
+
+    updateScheduleBadge();
     renderTemplateSelect();
+    renderWeekScheduleUI();
     renderZoneEditor();
     renderZonesAndLegend();
     renderTrackTicks();
@@ -2118,17 +2314,23 @@
   }
 
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) { stopTitleFlash(); masterTick(); renderNotifyStatus(); }
+    if (!document.hidden) { stopTitleFlash(); masterTick(); tick(); renderNotifyStatus(); }
   });
-  window.addEventListener("focus", () => { stopTitleFlash(); masterTick(); });
+  window.addEventListener("focus", () => { stopTitleFlash(); masterTick(); tick(); });
   document.addEventListener("pointerdown", initAudio, { once: true });
 
   // ===== 啟動 =====
   loadState();
+  loadWeekSchedule();
+  loadTemplateOverride();
+  applyTemplateForToday(false);      // 依今天星期 / 手動覆蓋決定 activeTemplateId
+  lastScheduleDate = todayStr();
   loadGridSettings();
   applyLayoutToWidgets();
   applyCardPrefs();
   renderTemplateSelect();
+  renderWeekScheduleUI();
+  updateScheduleBadge();
   renderZonesAndLegend();
   renderTicks();
   renderZoneEditor();
