@@ -359,6 +359,7 @@
     margin-bottom: 26px;
     padding-bottom: 22px;
     border-bottom: 1px solid var(--border);
+    transition: padding-bottom 0.17s ease;
   }
   .drawer-section:last-child { border-bottom: none; }
   .drawer-section h3 {
@@ -368,6 +369,40 @@
     color: var(--muted);
     margin: 0 0 12px;
   }
+
+  /* ===== 可摺疊區塊 ===== */
+  .drawer-section h3.section-toggle {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+    transition: margin-bottom 0.17s ease;
+  }
+  .drawer-section h3.section-toggle:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: 3px;
+  }
+  .section-chevron {
+    margin-left: auto;
+    flex-shrink: 0;
+    width: 0; height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid currentColor;
+    transition: transform 0.17s ease;
+  }
+  .section-collapse {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 0.17s ease;
+  }
+  .drawer-section-body { overflow: hidden; min-height: 0; }
+  .drawer-section.collapsed { padding-bottom: 0; }
+  .drawer-section.collapsed h3.section-toggle { margin-bottom: 0; }
+  .drawer-section.collapsed .section-chevron { transform: rotate(-90deg); }
+  .drawer-section.collapsed .section-collapse { grid-template-rows: 0fr; }
+  /* 收合時立即 visibility:hidden —— 內部 select/input 馬上退出 Tab 焦點順序(不等動畫) */
+  .drawer-section.collapsed .drawer-section-body { visibility: hidden; }
 
   .drawer-row {
     display: flex;
@@ -527,6 +562,11 @@
     .marker { animation: none; }
     .widget.flash { animation: none; }
     #alertBanner { transition: none; }
+    .drawer-section,
+    .drawer-section h3.section-toggle,
+    .section-chevron,
+    .section-collapse { transition: none; }
+    .drawer-section.collapsed .drawer-section-body { transition: none; }
   }
 
   /* 手機最低限度修正:讓時鐘本體(時間+時間軸)在第一屏內完整可見,
@@ -688,7 +728,7 @@
       <button id="closeDrawer" aria-label="關閉設定">✕</button>
     </div>
 
-    <div class="drawer-section">
+    <div class="drawer-section" data-section="layout">
       <h3>版面</h3>
       <div class="drawer-row">
         <label for="snapToggle">對齊格線</label>
@@ -706,7 +746,7 @@
       <button class="btn full" id="resetLayoutBtn">重設面板位置與大小</button>
     </div>
 
-    <div class="drawer-section">
+    <div class="drawer-section" data-section="panels">
       <h3>面板外觀</h3>
       <div class="drawer-row">
         <label for="cardToggle-clock">時鐘顯示底框</label>
@@ -746,7 +786,7 @@
       </div>
     </div>
 
-    <div class="drawer-section">
+    <div class="drawer-section" data-section="appearance">
       <h3>外觀</h3>
       <div class="drawer-row">
         <label for="accentPicker">主題色</label>
@@ -765,7 +805,7 @@
       </div>
     </div>
 
-    <div class="drawer-section">
+    <div class="drawer-section" data-section="template">
       <h3>範本</h3>
       <label for="templateSelect" class="template-label">目前使用</label>
       <div class="template-controls">
@@ -777,19 +817,19 @@
       <button class="override-note" id="clearOverrideBtn" hidden>今日手動指定 · 點此回到自動排程</button>
     </div>
 
-    <div class="drawer-section">
+    <div class="drawer-section" data-section="schedule">
       <h3>每週排程</h3>
       <p class="drawer-sub">週一到週五自動套用指定範本;週末與「不指定」維持手動選擇</p>
       <div id="weekScheduleList"></div>
     </div>
 
-    <div class="drawer-section">
+    <div class="drawer-section" data-section="zones">
       <h3>管理時段 · <span id="editingTemplateName">平日</span></h3>
       <div id="zoneList"></div>
       <button class="btn" id="addZoneBtn">+ 新增時段</button>
     </div>
 
-    <div class="drawer-section">
+    <div class="drawer-section" data-section="pomodoro">
       <h3>番茄鐘</h3>
       <div class="drawer-row">
         <label for="pomoWorkMin">工作時長(分)</label>
@@ -826,7 +866,7 @@
       </div>
     </div>
 
-    <div class="drawer-section">
+    <div class="drawer-section" data-section="eyecare">
       <h3>護眼提醒</h3>
       <div class="drawer-row">
         <label for="eyeEnableDrawer">啟用</label>
@@ -858,7 +898,7 @@
       </div>
     </div>
 
-    <div class="drawer-section">
+    <div class="drawer-section" data-section="alerts">
       <h3>提醒設定</h3>
       <div class="drawer-row">
         <label for="alertVolume">音效音量</label>
@@ -931,6 +971,7 @@
   const LS_ALERT_PREFS = "myClock_alertPrefs";
   const LS_WEEK_SCHEDULE = "myClock_weekSchedule";   // { "1".."5": templateId | "" }
   const LS_TPL_OVERRIDE = "myClock_templateOverride"; // { date: "YYYY-M-D", templateId }
+  const LS_DRAWER_COLLAPSED = "myClock_drawerCollapsed"; // { <data-section>: true }  true = 收合
 
   // localStorage 在無痕模式 / 封鎖 cookie 的瀏覽器會直接拋錯,
   // 統一包一層,存取失敗時安靜降級,不讓整頁 script 中斷。
@@ -1569,6 +1610,70 @@
   settingsToggle.addEventListener("click", openDrawer);
   closeDrawer.addEventListener("click", closeDrawerFn);
   drawerOverlay.addEventListener("click", closeDrawerFn);
+
+  // ===== 抽屜區塊可摺疊 =====
+  // 每個 .drawer-section 用 data-section 當穩定 id(不用陣列索引,順序變動也不會錯位)。
+  // 收合狀態存 LS_DRAWER_COLLAPSED;沒有存檔時預設全展開。
+  function loadDrawerCollapsed() {
+    try {
+      const raw = JSON.parse(storage.get(LS_DRAWER_COLLAPSED) || "null");
+      return (raw && typeof raw === "object") ? raw : {};
+    } catch { return {}; }
+  }
+  function saveDrawerCollapsed(state) {
+    storage.set(LS_DRAWER_COLLAPSED, JSON.stringify(state));
+  }
+
+  function initCollapsibleSections() {
+    const collapsed = loadDrawerCollapsed();
+    document.querySelectorAll("#settingsDrawer .drawer-section").forEach((section) => {
+      const id = section.dataset.section;
+      const h3 = section.querySelector("h3");
+      if (!id || !h3) return;
+
+      // 把標題之後的所有節點包進可摺疊容器
+      const collapseWrap = document.createElement("div");
+      collapseWrap.className = "section-collapse";
+      const body = document.createElement("div");
+      body.className = "drawer-section-body";
+      let node = h3.nextSibling;
+      while (node) {
+        const next = node.nextSibling;
+        body.appendChild(node);
+        node = next;
+      }
+      collapseWrap.appendChild(body);
+      section.appendChild(collapseWrap);
+
+      // 標題列變成可操作按鈕
+      const chevron = document.createElement("span");
+      chevron.className = "section-chevron";
+      chevron.setAttribute("aria-hidden", "true");
+      h3.appendChild(chevron);
+      h3.classList.add("section-toggle");
+      h3.setAttribute("role", "button");
+      h3.setAttribute("tabindex", "0");
+
+      const startCollapsed = collapsed[id] === true;
+      section.classList.toggle("collapsed", startCollapsed);
+      h3.setAttribute("aria-expanded", String(!startCollapsed));
+
+      function toggleSection() {
+        const nowCollapsed = section.classList.toggle("collapsed");
+        h3.setAttribute("aria-expanded", String(!nowCollapsed));
+        const st = loadDrawerCollapsed();
+        st[id] = nowCollapsed;
+        saveDrawerCollapsed(st);
+      }
+      h3.addEventListener("click", toggleSection);
+      h3.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+          e.preventDefault();
+          toggleSection();
+        }
+      });
+    });
+  }
 
   // ===== 格線對齊 =====
   let snapEnabled = true;
@@ -2325,6 +2430,7 @@
   loadTemplateOverride();
   applyTemplateForToday(false);      // 依今天星期 / 手動覆蓋決定 activeTemplateId
   lastScheduleDate = todayStr();
+  initCollapsibleSections();
   loadGridSettings();
   applyLayoutToWidgets();
   applyCardPrefs();
