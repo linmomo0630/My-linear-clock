@@ -515,6 +515,36 @@
   .eye-enable { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--fg); margin-top: 12px; cursor: pointer; }
   .eye-enable input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
 
+  /* ===== 圖片參考面板 ===== */
+  .img-panel .widget-body { padding: 0; position: relative; overflow: hidden; }
+  .img-state { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 16px; }
+  .img-state[hidden] { display: none; }
+  .img-dropzone {
+    flex-direction: column; gap: 8px;
+    border: 1px dashed var(--border);
+    border-radius: 10px; margin: 10px;
+    color: var(--muted); font-size: 0.8rem; cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .img-dropzone:hover, .img-dropzone.drag-over { border-color: var(--accent); color: var(--fg); }
+  .img-loading { color: var(--muted); font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; letter-spacing: 1px; }
+  .img-error { color: #f87171; font-size: 0.78rem; line-height: 1.5; flex-direction: column; gap: 8px; }
+  .img-view { position: absolute; inset: 0; }
+  .img-view[hidden] { display: none; }
+  .img-view img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .img-actions {
+    position: absolute; right: 8px; bottom: 8px;
+    display: flex; gap: 6px;
+    opacity: 0; transition: opacity 0.15s;
+  }
+  .img-view:hover .img-actions, .img-view:focus-within .img-actions { opacity: 1; }
+  body.edit-mode .img-actions { display: none; }
+  .img-actions .btn { padding: 3px 9px; font-size: 0.68rem; background: var(--panel); }
+  .img-panel-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 0.8rem; }
+  .img-panel-row:last-child { border-bottom: none; }
+  .img-panel-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+  .img-panel-row .name.empty { color: var(--muted); }
+
   @keyframes widgetFlash {
     0%, 100% { box-shadow: 0 0 0 0 rgba(0, 0, 0, 0); }
     50% { box-shadow: 0 0 0 2px var(--accent), 0 0 22px 4px var(--accent-glow); }
@@ -567,6 +597,7 @@
     .section-chevron,
     .section-collapse { transition: none; }
     .drawer-section.collapsed .drawer-section-body { transition: none; }
+    .img-dropzone, .img-actions { transition: none; }
   }
 
   /* 手機最低限度修正:讓時鐘本體(時間+時間軸)在第一屏內完整可見,
@@ -784,6 +815,14 @@
         <label for="cardToggle-eyecare">護眼提醒顯示底框</label>
         <input type="checkbox" id="cardToggle-eyecare" data-widget="eyecare" />
       </div>
+      <div id="imgCardToggleList"></div>
+    </div>
+
+    <div class="drawer-section" data-section="images">
+      <h3>圖片面板</h3>
+      <p class="drawer-sub">放課表之類的參考圖;圖片存在瀏覽器本機(IndexedDB),不會上傳</p>
+      <button class="btn full" id="addImagePanelBtn">+ 新增圖片面板</button>
+      <div id="imagePanelList"></div>
     </div>
 
     <div class="drawer-section" data-section="appearance">
@@ -972,6 +1011,7 @@
   const LS_WEEK_SCHEDULE = "myClock_weekSchedule";   // { "1".."5": templateId | "" }
   const LS_TPL_OVERRIDE = "myClock_templateOverride"; // { date: "YYYY-M-D", templateId }
   const LS_DRAWER_COLLAPSED = "myClock_drawerCollapsed"; // { <data-section>: true }  true = 收合
+  const LS_IMAGE_PANELS = "myClock_imagePanels";     // [{ id, imageKey, fileName }]
 
   // localStorage 在無痕模式 / 封鎖 cookie 的瀏覽器會直接拋錯,
   // 統一包一層,存取失敗時安靜降級,不讓整頁 script 中斷。
@@ -1718,9 +1758,14 @@
 
   function applyLayoutToWidgets() {
     const saved = loadLayout();
+    let fallbackN = 0;   // 動態面板沒有預設座標時,往下錯開擺放
     document.querySelectorAll(".widget").forEach((widget) => {
       const key = widget.dataset.widget;
-      const rect = saved[key] || DEFAULT_LAYOUT[key];
+      let rect = saved[key] || DEFAULT_LAYOUT[key];
+      if (!rect) {
+        rect = { x: 24 + (fallbackN % 5) * 28, y: 660 + Math.floor(fallbackN / 5) * 28, w: 320, h: 240 };
+        fallbackN++;
+      }
       widget.style.left = rect.x + "px";
       widget.style.top = rect.y + "px";
       widget.style.width = rect.w + "px";
@@ -1840,22 +1885,405 @@
   }
   function applyCardPrefs() {
     const prefs = loadCardPrefs();
+    // 動態面板沒設定過 → 預設顯示底框(true)
+    const resolve = (key) => (key in prefs ? !!prefs[key] : true);
     document.querySelectorAll(".widget").forEach((widget) => {
-      const key = widget.dataset.widget;
-      widget.classList.toggle("show-card", !!prefs[key]);
+      widget.classList.toggle("show-card", resolve(widget.dataset.widget));
     });
     document.querySelectorAll("[data-widget][type=checkbox]").forEach((cb) => {
-      cb.checked = !!prefs[cb.dataset.widget];
+      cb.checked = resolve(cb.dataset.widget);
     });
   }
-  document.querySelectorAll("[data-widget][type=checkbox]").forEach((cb) => {
-    cb.addEventListener("change", () => {
-      const prefs = loadCardPrefs();
-      prefs[cb.dataset.widget] = cb.checked;
-      saveCardPrefs(prefs);
-      applyCardPrefs();
+  // 事件委派:動態產生的圖片面板底框開關也能作用
+  settingsDrawer.addEventListener("change", (e) => {
+    const cb = e.target;
+    if (!cb.matches || !cb.matches("[data-widget][type=checkbox]")) return;
+    const prefs = loadCardPrefs();
+    prefs[cb.dataset.widget] = cb.checked;
+    saveCardPrefs(prefs);
+    applyCardPrefs();
+  });
+  function removeCardPref(key) {
+    const prefs = loadCardPrefs();
+    if (key in prefs) { delete prefs[key]; saveCardPrefs(prefs); }
+  }
+  function setCardPref(key, value) {
+    const prefs = loadCardPrefs();
+    prefs[key] = value;
+    saveCardPrefs(prefs);
+  }
+  function removeLayoutEntry(key) {
+    const layout = loadLayout();
+    if (key in layout) { delete layout[key]; saveLayout(layout); }
+  }
+
+  // =====================================================================
+  //  圖片參考面板(可自行增減,放課表之類的參考圖)
+  //
+  //  imageStore —— 圖片二進位資料的儲存層。
+  //  目前實作:IndexedDB。容量遠大於 localStorage,且能直接存 Blob,
+  //  不必 base64 編碼(base64 會膨脹約 33%,幾張截圖就爆掉 5MB)。
+  //
+  //  這層刻意把「圖片存在哪」和其他程式完全隔開:面板邏輯只透過下面
+  //  這組 Promise 介面存取圖片,不知道底層是 IndexedDB 還是別的東西。
+  //  未來要改成雲端儲存(上傳到自架後端 / S3 / …),只要重寫這四個方法
+  //  的內部實作、維持相同的簽名與「失敗時 reject」的約定,其餘程式一行
+  //  都不用改:
+  //      imageStore.save(key, blob)  -> Promise<void>
+  //      imageStore.get(key)         -> Promise<Blob|null>
+  //      imageStore.delete(key)      -> Promise<void>
+  //      imageStore.list()           -> Promise<string[]>
+  //      imageStore.available()      -> Promise<boolean>   這個環境能否使用
+  //  所有失敗(不支援 / 無痕模式 / 容量已滿 / 交易中止)都會 reject,
+  //  由呼叫端負責顯示提示,不讓整頁掛掉。
+  // =====================================================================
+  const imageStore = (() => {
+    const DB_NAME = "myClockImages";
+    const STORE = "images";
+    let dbPromise = null;
+
+    function openDB() {
+      if (dbPromise) return dbPromise;
+      dbPromise = new Promise((resolve, reject) => {
+        let idb;
+        try { idb = window.indexedDB; } catch (e) { idb = null; }
+        if (!idb) { reject(new Error("此瀏覽器 / 目前模式不支援 IndexedDB")); return; }
+        let req;
+        try { req = idb.open(DB_NAME, 1); }
+        catch (e) { reject(e); return; }
+        req.onupgradeneeded = () => {
+          try { req.result.createObjectStore(STORE); } catch (e) {}
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error || new Error("IndexedDB 開啟失敗"));
+        req.onblocked = () => reject(new Error("IndexedDB 被其他分頁佔用"));
+      });
+      // 開啟失敗時不要把失敗的 promise 永久快取
+      dbPromise.catch(() => { dbPromise = null; });
+      return dbPromise;
+    }
+
+    function run(mode, makeRequest) {
+      return openDB().then((db) => new Promise((resolve, reject) => {
+        let t;
+        try { t = db.transaction(STORE, mode); }
+        catch (e) { reject(e); return; }
+        let out;
+        const r = makeRequest(t.objectStore(STORE));
+        if (r) r.onsuccess = () => { out = r.result; };
+        t.oncomplete = () => resolve(out);
+        t.onerror = () => reject(t.error || new Error("IndexedDB 交易失敗"));
+        t.onabort = () => reject(t.error || new Error("IndexedDB 交易中止(可能是空間已滿)"));
+      }));
+    }
+
+    return {
+      save(key, blob) { return run("readwrite", (s) => s.put(blob, key)).then(() => undefined); },
+      get(key) { return run("readonly", (s) => s.get(key)).then((v) => v || null); },
+      delete(key) { return run("readwrite", (s) => s.delete(key)).then(() => undefined); },
+      list() { return run("readonly", (s) => s.getAllKeys()).then((k) => (k || []).map(String)); },
+      available() { return openDB().then(() => true, () => false); },
+    };
+  })();
+
+  const IMG_MAX_BYTES = 10 * 1024 * 1024;
+  const IMG_EXT_TYPE = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" };
+  const IMG_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+
+  // 回傳 null 代表可接受,否則回傳給使用者看的錯誤訊息
+  function checkImageFile(file) {
+    if (!file) return "沒有選到檔案";
+    const ext = (file.name.split(".").pop() || "").toLowerCase();
+    const looksImage = IMG_TYPES.includes(file.type) || IMG_EXT_TYPE[ext];
+    if (!looksImage) {
+      return "「" + file.name + "」不是支援的圖片格式。只接受 PNG / JPG / WebP / GIF";
+    }
+    if (file.size > IMG_MAX_BYTES) {
+      return "「" + file.name + "」有 " + (file.size / 1024 / 1024).toFixed(1) + " MB,超過 10 MB 上限";
+    }
+    return null;
+  }
+
+  let imagePanels = [];   // [{ id, imageKey, fileName }]
+  const imagePanelList = document.getElementById("imagePanelList");
+  const imgCardToggleList = document.getElementById("imgCardToggleList");
+  const addImagePanelBtn = document.getElementById("addImagePanelBtn");
+
+  function loadImagePanels() {
+    try {
+      const raw = JSON.parse(storage.get(LS_IMAGE_PANELS) || "null");
+      imagePanels = Array.isArray(raw)
+        ? raw.filter((p) => p && typeof p.id === "string").map((p) => ({
+            id: p.id,
+            imageKey: typeof p.imageKey === "string" ? p.imageKey : null,
+            fileName: typeof p.fileName === "string" ? p.fileName : null,
+          }))
+        : [];
+    } catch { imagePanels = []; }
+  }
+  function saveImagePanels() { storage.set(LS_IMAGE_PANELS, JSON.stringify(imagePanels)); }
+  function getPanelEntry(id) { return imagePanels.find((p) => p.id === id); }
+
+  // 唯一 id:時間戳(36 進位)+ 隨機尾碼。刪除面板後不會像索引那樣位移錯位。
+  function newPanelId() {
+    return "img_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  }
+
+  function createImagePanelEl(entry) {
+    if (document.getElementById("widget-" + entry.id)) return;
+    const el = document.createElement("div");
+    el.className = "widget img-panel";
+    el.id = "widget-" + entry.id;
+    el.dataset.widget = entry.id;
+
+    const handle = document.createElement("div");
+    handle.className = "widget-handle";
+    handle.textContent = "⠿⠿ 圖片";
+
+    const body = document.createElement("div");
+    body.className = "widget-body";
+
+    // 隱藏的檔案選擇器
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/png,image/jpeg,image/webp,image/gif";
+    fileInput.hidden = true;
+
+    // 三種狀態:放置區 / 載入中 / 錯誤 —— 共用 .img-state
+    const dropzone = document.createElement("div");
+    dropzone.className = "img-state img-dropzone";
+    dropzone.setAttribute("role", "button");
+    dropzone.setAttribute("tabindex", "0");
+    dropzone.textContent = "拖曳圖片到這裡,或點擊選擇";
+
+    const loading = document.createElement("div");
+    loading.className = "img-state img-loading";
+    loading.textContent = "載入中…";
+    loading.hidden = true;
+
+    const errorBox = document.createElement("div");
+    errorBox.className = "img-state img-error";
+    errorBox.hidden = true;
+
+    // 圖片檢視
+    const view = document.createElement("div");
+    view.className = "img-view";
+    view.hidden = true;
+    const img = document.createElement("img");
+    img.alt = "參考圖";
+    const actions = document.createElement("div");
+    actions.className = "img-actions";
+    const replaceBtn = document.createElement("button");
+    replaceBtn.className = "btn";
+    replaceBtn.textContent = "更換";
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "btn danger";
+    removeBtn.textContent = "移除";
+    actions.append(replaceBtn, removeBtn);
+    view.append(img, actions);
+
+    body.append(fileInput, dropzone, loading, errorBox, view);
+    el.append(handle, body);
+    document.getElementById("canvas").appendChild(el);
+
+    // 拖曳 / 縮放(和固定面板同一套)
+    makeDraggable(el);
+    makeResizable(el);
+
+    // ---- 事件 ----
+    function pickFile() { fileInput.click(); }
+    dropzone.addEventListener("click", pickFile);
+    dropzone.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickFile(); }
+    });
+    replaceBtn.addEventListener("click", pickFile);
+    removeBtn.addEventListener("click", () => removeImageFromPanel(entry.id));
+
+    fileInput.addEventListener("change", () => {
+      const f = fileInput.files && fileInput.files[0];
+      fileInput.value = "";
+      if (f) acceptImageForPanel(entry.id, f);
+    });
+
+    ["dragenter", "dragover"].forEach((ev) =>
+      body.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.add("drag-over"); }));
+    ["dragleave", "drop"].forEach((ev) =>
+      body.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.remove("drag-over"); }));
+    body.addEventListener("drop", (e) => {
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) acceptImageForPanel(entry.id, f);
+    });
+
+    el._imgRefs = { dropzone, loading, errorBox, view, img };
+    refreshImagePanelView(entry);
+    return el;
+  }
+
+  function setPanelState(el, state, errorMsg) {
+    const r = el._imgRefs;
+    r.dropzone.hidden = state !== "empty";
+    r.loading.hidden = state !== "loading";
+    r.errorBox.hidden = state !== "error";
+    r.view.hidden = state !== "image";
+    if (state === "error") {
+      r.errorBox.textContent = "";
+      const p = document.createElement("div");
+      p.textContent = errorMsg || "圖片載入失敗";
+      const retry = document.createElement("button");
+      retry.className = "btn";
+      retry.textContent = "重新選擇圖片";
+      retry.addEventListener("click", () => setPanelState(el, "empty"));
+      r.errorBox.append(p, retry);
+    }
+  }
+
+  function refreshImagePanelView(entry) {
+    const el = document.getElementById("widget-" + entry.id);
+    if (!el) return;
+    // 釋放舊的 object URL
+    if (el._imgUrl) { URL.revokeObjectURL(el._imgUrl); el._imgUrl = null; }
+
+    if (!entry.imageKey) { setPanelState(el, "empty"); return; }
+
+    setPanelState(el, "loading");   // 先顯示載入中,不要空白閃爍
+    imageStore.get(entry.imageKey).then((blob) => {
+      if (!blob) { setPanelState(el, "error", "找不到這張圖片(可能已被清除)"); return; }
+      const url = URL.createObjectURL(blob);
+      el._imgUrl = url;
+      const imgEl = el._imgRefs.img;
+      imgEl.onload = () => setPanelState(el, "image");
+      imgEl.onerror = () => setPanelState(el, "error", "圖片格式無法顯示");
+      imgEl.src = url;
+    }).catch((err) => {
+      setPanelState(el, "error", "無法讀取本機圖片:" + (err && err.message ? err.message : "未知錯誤"));
+    });
+  }
+
+  function acceptImageForPanel(id, file) {
+    const entry = getPanelEntry(id);
+    if (!entry) return;
+    const problem = checkImageFile(file);
+    if (problem) { showToast(problem); return; }
+
+    const el = document.getElementById("widget-" + id);
+    if (el) setPanelState(el, "loading");
+
+    const key = "imgkey_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    imageStore.save(key, file).then(() => {
+      const old = entry.imageKey;
+      entry.imageKey = key;
+      entry.fileName = file.name;
+      saveImagePanels();
+      renderImagePanelListUI();
+      renderImgCardToggles();
+      refreshImagePanelView(entry);
+      if (old) imageStore.delete(old).catch(() => {});   // 清掉被換掉的舊圖
+    }).catch((err) => {
+      const q = err && err.name === "QuotaExceededError";
+      showToast(q ? "空間不足,圖片沒有存進去。請先移除其他圖片或清理瀏覽器空間"
+                  : "圖片儲存失敗:" + (err && err.message ? err.message : "未知錯誤"));
+      if (el) refreshImagePanelView(entry);   // 回到先前狀態
+    });
+  }
+
+  function removeImageFromPanel(id) {
+    const entry = getPanelEntry(id);
+    if (!entry || !entry.imageKey) return;
+    const key = entry.imageKey;
+    entry.imageKey = null;
+    entry.fileName = null;
+    saveImagePanels();
+    refreshImagePanelView(entry);
+    renderImagePanelListUI();
+    renderImgCardToggles();
+    imageStore.delete(key).catch((err) => showToast("圖片已從面板移除,但清除本機檔案失敗"));
+  }
+
+  function addImagePanel() {
+    const entry = { id: newPanelId(), imageKey: null, fileName: null };
+    imagePanels.push(entry);
+    saveImagePanels();
+    setCardPref(entry.id, true);       // 預設顯示底框
+    createImagePanelEl(entry);
+    applyLayoutToWidgets();             // 給新面板套用預設(錯開)座標
+    applyCardPrefs();
+    renderImgCardToggles();
+    renderImagePanelListUI();
+    // 存一次初始 layout,之後拖曳/縮放才有基準
+    saveLayout(currentLayoutFromDOM());
+  }
+
+  function deleteImagePanel(id) {
+    const idx = imagePanels.findIndex((p) => p.id === id);
+    if (idx < 0) return;
+    const entry = imagePanels[idx];
+    const el = document.getElementById("widget-" + id);
+    if (el && el._imgUrl) URL.revokeObjectURL(el._imgUrl);
+    if (el) el.remove();
+    imagePanels.splice(idx, 1);
+    saveImagePanels();
+    removeLayoutEntry(id);
+    removeCardPref(id);
+    renderImgCardToggles();
+    renderImagePanelListUI();
+    updateCanvasSize();
+    if (entry.imageKey) imageStore.delete(entry.imageKey).catch(() => {});
+  }
+
+  // 「面板外觀」區塊裡,圖片面板各自的底框開關(動態產生,接在固定面板後面)
+  function renderImgCardToggles() {
+    imgCardToggleList.innerHTML = "";
+    const prefs = loadCardPrefs();
+    imagePanels.forEach((entry, i) => {
+      const row = document.createElement("div");
+      row.className = "drawer-row";
+      const label = document.createElement("label");
+      const cbId = "cardToggle-" + entry.id;
+      label.setAttribute("for", cbId);
+      label.textContent = (entry.fileName ? "圖片:" + entry.fileName : "圖片面板 " + (i + 1)) + " 顯示底框";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.id = cbId;
+      cb.dataset.widget = entry.id;
+      cb.checked = entry.id in prefs ? !!prefs[entry.id] : true;
+      row.append(label, cb);
+      imgCardToggleList.appendChild(row);
+    });
+  }
+
+  // 「圖片面板」區塊:列出面板 + 檔名 + 刪除
+  function renderImagePanelListUI() {
+    imagePanelList.innerHTML = "";
+    imagePanels.forEach((entry, i) => {
+      const row = document.createElement("div");
+      row.className = "img-panel-row";
+      const name = document.createElement("span");
+      name.className = "name" + (entry.fileName ? "" : " empty");
+      name.textContent = entry.fileName || "面板 " + (i + 1) + "(空白)";
+      const del = document.createElement("button");
+      del.className = "btn danger";
+      del.textContent = "刪除";
+      del.addEventListener("click", () => {
+        if (confirm("刪除這個圖片面板?面板裡的圖片也會一併清除。")) deleteImagePanel(entry.id);
+      });
+      row.append(name, del);
+      imagePanelList.appendChild(row);
+    });
+  }
+
+  addImagePanelBtn.addEventListener("click", () => {
+    imageStore.available().then((ok) => {
+      if (!ok) showToast("這個瀏覽器 / 無痕模式無法儲存圖片,面板仍可新增但放進去的圖不會被記住");
+      addImagePanel();
     });
   });
+
+  function initImagePanels() {
+    loadImagePanels();
+    imagePanels.forEach((entry) => createImagePanelEl(entry));
+    renderImgCardToggles();
+    renderImagePanelListUI();
+  }
 
   // =====================================================================
   //  v2:番茄鐘 + 護眼提醒
@@ -2432,6 +2860,7 @@
   lastScheduleDate = todayStr();
   initCollapsibleSections();
   loadGridSettings();
+  initImagePanels();          // 建立動態圖片面板的 DOM(要在版面/底框套用之前)
   applyLayoutToWidgets();
   applyCardPrefs();
   renderTemplateSelect();
