@@ -1477,7 +1477,13 @@
   clearOverrideBtn.addEventListener("click", () => {
     templateOverride = null;
     saveTemplateOverride();
+    const before = activeTemplateId;
     applyTemplateForToday(true);
+    // 今天若沒有排程可套用(週末 / 不指定),範本畫面不會變,只有小標示消失,
+    // 容易讓人以為「按了沒反應」——這裡一律補一個 toast 給明確回饋。
+    showToast(activeTemplateId !== before
+      ? "已回到自動排程 · 套用「" + getCurrentTemplate().name + "」"
+      : "已取消手動指定(今天沒有排程可套用,範本維持不變)");
   });
 
   templateSelect.addEventListener("change", (e) => {
