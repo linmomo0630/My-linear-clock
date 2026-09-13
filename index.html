@@ -441,6 +441,7 @@
   .btn:disabled { opacity: 0.35; cursor: not-allowed; }
   .btn:disabled:hover { border-color: var(--border); color: var(--fg); }
   .btn.full { width: 100%; }
+  .btn.full + .btn.full { margin-top: 8px; }
 
   .zone-row {
     display: flex;
@@ -948,6 +949,17 @@
         <span class="perm-status" id="notifyPermStatus">—</span>
       </div>
       <button class="btn full" id="notifyRequestBtn">請求通知權限</button>
+    </div>
+
+    <div class="drawer-section" data-section="backup">
+      <h3>資料備份</h3>
+      <p class="drawer-sub">
+        匯出範本、版面、番茄鐘/護眼設定等所有設定成一個檔案;
+        <strong>不含圖片面板裡的圖片本體</strong>(圖片存在 IndexedDB,還原後要重新加入)。
+      </p>
+      <button class="btn full" id="exportSettingsBtn">匯出設定</button>
+      <button class="btn full" id="importSettingsBtn">匯入設定</button>
+      <input type="file" id="importSettingsFile" accept="application/json,.json" hidden />
     </div>
   </div>
 
@@ -2857,6 +2869,105 @@
   });
   window.addEventListener("focus", () => { stopTitleFlash(); masterTick(); tick(); });
   document.addEventListener("pointerdown", initAudio, { once: true });
+
+  // =====================================================================
+  //  設定備份 / 還原
+  //  匯出/匯入 localStorage 裡所有 myClock_ 開頭的 key(範本、版面、
+  //  底框偏好、番茄鐘/護眼設定、每週排程、圖片面板中繼資料……)。
+  //  刻意不含圖片面板的圖片本體(那存在 IndexedDB) —— 備份檔案保持
+  //  小、也不用處理圖片跨瀏覽器搬移;還原後圖片面板會變成「找不到
+  //  圖片」的既有錯誤狀態,可以直接點「重新選擇圖片」補回去。
+  //  番茄鐘/護眼倒數等帶時間戳的暫存狀態就算匯入了舊資料,既有的
+  //  過期偵測/追趕邏輯(pomoResolveOverdue / eyeResolveOverdue /
+  //  applyTemplateForToday)也會自動收斂到正確狀態,不需要特別處理。
+  // =====================================================================
+  const BACKUP_APP_ID = "my-linear-clock";
+  const BACKUP_KEY_PREFIX = "myClock_";
+
+  function collectBackupData() {
+    const data = {};
+    let keys = [];
+    try { keys = Object.keys(window.localStorage); } catch { keys = []; }
+    keys.forEach((k) => {
+      if (!k.startsWith(BACKUP_KEY_PREFIX)) return;
+      const v = storage.get(k);
+      if (v !== null) data[k] = v;
+    });
+    return data;
+  }
+
+  function exportSettings() {
+    const payload = {
+      app: BACKUP_APP_ID,
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      data: collectBackupData(),
+    };
+    let blob;
+    try {
+      blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    } catch (err) {
+      showToast("匯出失敗:" + (err && err.message ? err.message : "未知錯誤"));
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const d = new Date();
+    const stamp = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    a.href = url;
+    a.download = "myclock-backup-" + stamp + ".json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast("已匯出設定(不含圖片面板的圖片)");
+  }
+
+  function applyImportedSettings(payload) {
+    if (!payload || payload.app !== BACKUP_APP_ID || !payload.data || typeof payload.data !== "object") {
+      showToast("這不是有效的備份檔案");
+      return false;
+    }
+    const incoming = {};
+    Object.keys(payload.data).forEach((k) => {
+      if (k.startsWith(BACKUP_KEY_PREFIX) && typeof payload.data[k] === "string") {
+        incoming[k] = payload.data[k];
+      }
+    });
+    if (Object.keys(incoming).length === 0) {
+      showToast("備份檔案裡沒有可還原的設定");
+      return false;
+    }
+    if (!confirm("匯入會覆蓋目前所有設定(範本、版面、番茄鐘/護眼設定等),且無法復原。確定要繼續嗎?")) {
+      return false;
+    }
+    // 先清掉現有的 myClock_ 設定,避免新舊資料混在一起
+    let existingKeys = [];
+    try { existingKeys = Object.keys(window.localStorage).filter((k) => k.startsWith(BACKUP_KEY_PREFIX)); } catch {}
+    existingKeys.forEach((k) => storage.remove(k));
+    Object.entries(incoming).forEach(([k, v]) => storage.set(k, v));
+    return true;
+  }
+
+  document.getElementById("exportSettingsBtn").addEventListener("click", exportSettings);
+
+  const importSettingsFile = document.getElementById("importSettingsFile");
+  document.getElementById("importSettingsBtn").addEventListener("click", () => importSettingsFile.click());
+  importSettingsFile.addEventListener("change", () => {
+    const file = importSettingsFile.files && importSettingsFile.files[0];
+    importSettingsFile.value = "";
+    if (!file) return;
+    file.text().then((text) => {
+      let payload;
+      try { payload = JSON.parse(text); } catch { showToast("檔案不是有效的 JSON"); return; }
+      if (applyImportedSettings(payload)) {
+        showToast("匯入成功,重新載入頁面套用設定…");
+        setTimeout(() => location.reload(), 600);
+      }
+    }).catch((err) => {
+      showToast("讀取檔案失敗:" + (err && err.message ? err.message : "未知錯誤"));
+    });
+  });
 
   // ===== 啟動 =====
   loadState();
