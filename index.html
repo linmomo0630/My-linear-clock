@@ -487,6 +487,26 @@
   .week-row label { font-size: 0.85rem; color: var(--fg); flex-shrink: 0; }
   .week-row select { flex: 1 1 auto; min-width: 0; max-width: 190px; }
 
+  /* ===== 今日活動(鎖定時段 + 當天空檔活動選擇器)===== */
+  .zone-lock-label {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 0.68rem; color: var(--muted); cursor: pointer; flex-shrink: 0;
+  }
+  .zone-lock-label input { cursor: pointer; }
+  .day-activity-track { position: relative; margin-top: 10px; border-radius: 10px; }
+  .day-slot {
+    position: absolute; left: 0; right: 0; box-sizing: border-box;
+    border-radius: 5px; overflow: hidden; white-space: nowrap;
+    font-size: 0.65rem; display: flex; align-items: center; padding: 0 8px;
+  }
+  .day-slot.locked { background: rgba(255, 255, 255, 0.07); color: var(--muted); cursor: not-allowed; }
+  .day-slot.empty { border: 1px dashed var(--border); color: var(--label); cursor: pointer; background: transparent; }
+  .day-slot.empty:hover { border-color: var(--accent); color: var(--fg); }
+  .day-slot.activity { cursor: pointer; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); font-weight: 600; }
+  .day-activity-editor { margin-top: 10px; background: var(--panel); border-radius: 8px; padding: 10px; }
+  .day-activity-editor .zone-row { border-bottom: none; padding: 0 0 8px; }
+  .day-activity-editor .zone-row input[type="text"] { flex: 1 1 120px; width: auto; }
+
   /* ===== v2:番茄鐘 / 護眼提醒面板 ===== */
   .timer-display {
     font-family: 'JetBrains Mono', monospace;
@@ -863,6 +883,27 @@
       <button class="btn" id="addZoneBtn">+ 新增時段</button>
     </div>
 
+    <div class="drawer-section" data-section="dayActivities">
+      <h3>今日活動</h3>
+      <p class="drawer-sub">先在上面「管理時段」把課程等固定時段勾選鎖定;沒鎖定的空檔可以在這裡點選,填入今天的活動與長度,只影響今天,不會改到範本。</p>
+      <div id="dayActivityTrack" class="day-activity-track"></div>
+      <p class="drawer-sub" id="dayActivityHint" style="min-height:16px;"></p>
+      <div id="dayActivityEditor" class="day-activity-editor" hidden>
+        <p class="drawer-sub" id="dayActivityEditorTitle"></p>
+        <div class="zone-row">
+          <input type="text" id="dayActivityName" placeholder="鋼琴練習" />
+          <select id="dayActivityDur"></select>
+          <input type="color" id="dayActivityColor" value="#4cc2ff" />
+        </div>
+        <p class="drawer-sub" id="dayActivityErr" style="display:none;color:#f87171;"></p>
+        <div class="template-controls">
+          <button class="btn" id="dayActivityAddBtn">加入</button>
+          <button class="btn danger" id="dayActivityRemoveBtn" hidden>移除</button>
+          <button class="btn" id="dayActivityCancelBtn">取消</button>
+        </div>
+      </div>
+    </div>
+
     <div class="drawer-section" data-section="schedule">
       <h3>每週排程</h3>
       <p class="drawer-sub">週一到週五自動套用指定範本;週末與「不指定」維持手動選擇</p>
@@ -1024,6 +1065,7 @@
   const LS_TPL_OVERRIDE = "myClock_templateOverride"; // { date: "YYYY-M-D", templateId }
   const LS_DRAWER_COLLAPSED = "myClock_drawerCollapsed"; // { <data-section>: true }  true = 收合
   const LS_IMAGE_PANELS = "myClock_imagePanels";     // [{ id, imageKey, fileName }]
+  const LS_DAY_ACTIVITIES = "myClock_dayActivities"; // { "YYYY-M-D": [{ start, end, name, color }] }
 
   // localStorage 在無痕模式 / 封鎖 cookie 的瀏覽器會直接拋錯,
   // 統一包一層,存取失敗時安靜降級,不讓整頁 script 中斷。
@@ -1126,22 +1168,20 @@
   function renderZonesAndLegend() {
     track.querySelectorAll(".zone").forEach((el) => el.remove());
     legend.innerHTML = "";
-    const displayZones = getCurrentTemplate().zones;
+    const displayZones = getEffectiveZonesForToday();
+    const seenLegend = new Set();
     displayZones.forEach((z) => {
-      // 跨夜時段拆成兩段畫:start→24 與 0→end
-      const segments = z.end > z.start ? [[z.start, z.end]]
-        : z.end < z.start ? [[z.start, 24], [0, z.end]]
-        : [[0, 24]];
-      segments.forEach(([s, e]) => {
-        if (e - s <= 0) return;
-        const el = document.createElement("div");
-        el.className = "zone";
-        el.style.left = (s / 24 * 100) + "%";
-        el.style.width = ((e - s) / 24 * 100) + "%";
-        el.style.background = z.color;
-        track.appendChild(el);
-      });
+      const el = document.createElement("div");
+      el.className = "zone";
+      el.style.left = (z.start / 24 * 100) + "%";
+      el.style.width = ((z.end - z.start) / 24 * 100) + "%";
+      el.style.background = z.color;
+      track.appendChild(el);
 
+      // 同一個時段被當天活動切成好幾段時,圖例只列一次
+      const legendKey = z.name + "|" + z.color;
+      if (seenLegend.has(legendKey)) return;
+      seenLegend.add(legendKey);
       const item = document.createElement("div");
       item.className = "legend-item";
       const swatch = document.createElement("span");
@@ -1151,6 +1191,7 @@
       item.appendChild(document.createTextNode(z.name));
       legend.appendChild(item);
     });
+    renderDayActivityTrack();
   }
 
   function renderTrackTicks() {
@@ -1190,7 +1231,7 @@
       if (!isFinite(n)) n = 0;
       return ((n % 24) + 24) % 24;
     };
-    return { ...z, start: norm(z.start), end: norm(z.end) };
+    return { ...z, start: norm(z.start), end: norm(z.end), locked: !!z.locked };
   }
   // 時段是否涵蓋某個小時值(0–24),支援跨夜(end < start)
   function zoneCoversHour(z, hourFloat) {
@@ -1206,12 +1247,12 @@
   }
 
   function findCurrentZone(hourFloat) {
-    return getCurrentTemplate().zones.find((z) => zoneCoversHour(z, hourFloat));
+    return getEffectiveZonesForToday().find((z) => zoneCoversHour(z, hourFloat));
   }
   function findNextZone(hourFloat) {
-    const zones = getCurrentTemplate().zones;
+    const zones = getEffectiveZonesForToday();
     if (zones.length === 0) return null;
-    const current = findCurrentZone(hourFloat);
+    const current = zones.find((z) => zoneCoversHour(z, hourFloat));
     const others = zones.filter((z) => z !== current);
     if (others.length === 0) return null;
     const sorted = [...others].sort((a, b) => a.start - b.start);
@@ -1227,6 +1268,7 @@
     const today = todayStr();
     if (today !== lastScheduleDate) {
       lastScheduleDate = today;
+      pruneDayActivities();
       applyTemplateForToday(true);
     }
 
@@ -1298,6 +1340,9 @@
         <input type="time" value="${hourToTimeStr(z.end)}" data-field="end" />
         <span class="overnight-hint" style="color:var(--accent);font-size:0.65rem;${crossesMidnight(z) ? "" : "display:none;"}">跨夜</span>
         <input type="color" value="${escapeHtml(z.color)}" data-field="color" />
+        <label class="zone-lock-label">
+          <input type="checkbox" data-field="locked" ${z.locked ? "checked" : ""} />鎖定
+        </label>
         <button class="btn danger" data-action="delete">刪除</button>
       `;
       const hintEl = row.querySelector(".overnight-hint");
@@ -1309,6 +1354,7 @@
           if (field === "start") editingZones[idx].start = timeStrToHour(input.value);
           if (field === "end") editingZones[idx].end = timeStrToHour(input.value);
           if (field === "color") editingZones[idx].color = input.value;
+          if (field === "locked") editingZones[idx].locked = input.checked;
           hintEl.style.display = crossesMidnight(editingZones[idx]) ? "" : "none";
           saveTemplates();
           renderZonesAndLegend();
@@ -1331,13 +1377,265 @@
   }
 
   document.getElementById("addZoneBtn").addEventListener("click", () => {
-    getCurrentTemplate().zones.push({ name: "新時段", start: 12, end: 13, color: "#4cc2ff" });
+    getCurrentTemplate().zones.push({ name: "新時段", start: 12, end: 13, color: "#4cc2ff", locked: false });
     saveTemplates();
     renderZoneEditor();
     renderZonesAndLegend();
     renderTrackTicks();
     tick();
   });
+
+  // =====================================================================
+  //  今日活動:範本時段只分「鎖定(固定)」或「沒鎖定(可排活動)」。
+  //  沒鎖定的時段今天排了什麼活動,只存在 dayActivities[今天日期] 這一層,
+  //  不會動到範本本身——換一天 / 清掉活動,範本的時段完全不受影響。
+  // =====================================================================
+  let dayActivities = {};
+
+  function loadDayActivities() {
+    try {
+      const raw = JSON.parse(storage.get(LS_DAY_ACTIVITIES) || "null");
+      dayActivities = (raw && typeof raw === "object") ? raw : {};
+    } catch { dayActivities = {}; }
+    pruneDayActivities();
+  }
+  function saveDayActivities() { storage.set(LS_DAY_ACTIVITIES, JSON.stringify(dayActivities)); }
+
+  // 只留最近 14 天的活動紀錄,避免 localStorage 隨時間累積不停長大
+  function pruneDayActivities() {
+    const keep = new Set();
+    const base = new Date();
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() - i);
+      keep.add(d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate());
+    }
+    let changed = false;
+    Object.keys(dayActivities).forEach((k) => {
+      if (!keep.has(k)) { delete dayActivities[k]; changed = true; }
+    });
+    if (changed) saveDayActivities();
+  }
+  function getTodayActivities() {
+    const key = todayStr();
+    if (!Array.isArray(dayActivities[key])) dayActivities[key] = [];
+    return dayActivities[key];
+  }
+
+  // 把目前範本的時段攤平成不跨夜的區段(含是否鎖定),依開始時間排序
+  function getTodayZoneSegments() {
+    const segs = [];
+    getCurrentTemplate().zones.forEach((z) => {
+      const parts = z.end > z.start ? [[z.start, z.end]]
+        : z.end < z.start ? [[z.start, 24], [0, z.end]]
+        : [[0, 24]];
+      parts.forEach(([s, e]) => {
+        if (e > s) segs.push({ start: s, end: e, name: z.name, color: z.color, locked: !!z.locked });
+      });
+    });
+    return segs.sort((a, b) => a.start - b.start);
+  }
+
+  // 今天「實際」會顯示的時段:鎖定的時段照範本顯示;沒鎖定的時段,
+  // 今天排的活動會蓋掉對應的時間,其餘部分仍顯示原時段名稱/顏色。
+  function getEffectiveZonesForToday() {
+    const activities = getTodayActivities();
+    const result = [];
+    getTodayZoneSegments().forEach((seg) => {
+      if (seg.locked) {
+        result.push({ name: seg.name, color: seg.color, start: seg.start, end: seg.end, locked: true });
+        return;
+      }
+      const overlapping = activities
+        .filter((a) => a.start < seg.end && a.end > seg.start)
+        .map((a) => ({ start: Math.max(a.start, seg.start), end: Math.min(a.end, seg.end), name: a.name, color: a.color }))
+        .sort((a, b) => a.start - b.start);
+      let cursor = seg.start;
+      overlapping.forEach((a) => {
+        if (a.start > cursor) result.push({ name: seg.name, color: seg.color, start: cursor, end: a.start, locked: false });
+        result.push({ name: a.name, color: a.color, start: a.start, end: a.end, locked: false });
+        cursor = a.end;
+      });
+      if (cursor < seg.end) result.push({ name: seg.name, color: seg.color, start: cursor, end: seg.end, locked: false });
+    });
+    return result.sort((a, b) => a.start - b.start);
+  }
+
+  // ===== 今日活動選擇器(半小時為單位)=====
+  const DAY_SLOT_HOURS = 0.5;
+  const DAY_SLOT_COUNT = 24 / DAY_SLOT_HOURS; // 48
+  const DAY_ROW_PX = 14;
+
+  const dayActivityTrack = document.getElementById("dayActivityTrack");
+  const dayActivityHint = document.getElementById("dayActivityHint");
+  const dayActivityEditor = document.getElementById("dayActivityEditor");
+  const dayActivityEditorTitle = document.getElementById("dayActivityEditorTitle");
+  const dayActivityName = document.getElementById("dayActivityName");
+  const dayActivityDur = document.getElementById("dayActivityDur");
+  const dayActivityColor = document.getElementById("dayActivityColor");
+  const dayActivityErr = document.getElementById("dayActivityErr");
+  const dayActivityRemoveBtn = document.getElementById("dayActivityRemoveBtn");
+
+  let dayEditingStart = null;   // 正在編輯的活動原本的 start(null = 新增)
+  let daySelectedStart = null;  // 這次要寫入/更新的活動 start
+
+  function hourLabelShort(h) {
+    const hh = Math.floor(h);
+    const mm = Math.round((h - hh) * 60);
+    return hh + ":" + String(mm).padStart(2, "0");
+  }
+  function durLabel(units) {
+    const h = units * DAY_SLOT_HOURS;
+    return (h % 1 === 0 ? h.toFixed(0) : h.toFixed(1)) + " 小時";
+  }
+
+  // 每半小時格子的狀態:locked(鎖定時段)/ activity(今天已排)/ empty(空檔)
+  function computeDaySlotInfo() {
+    const segments = getTodayZoneSegments();
+    const activities = getTodayActivities();
+    const slots = [];
+    for (let i = 0; i < DAY_SLOT_COUNT; i++) {
+      const mid = i * DAY_SLOT_HOURS + DAY_SLOT_HOURS / 2;
+      const seg = segments.find((sg) => mid >= sg.start && mid < sg.end) || null;
+      if (seg && seg.locked) {
+        slots.push({ i, type: "locked", key: "locked-" + seg.start, label: seg.name });
+        continue;
+      }
+      const act = activities.find((a) => mid >= a.start && mid < a.end);
+      if (act) {
+        slots.push({ i, type: "activity", key: "act-" + act.start, label: act.name, color: act.color, activity: act });
+      } else {
+        slots.push({ i, type: "empty", key: "empty-" + (seg ? seg.start : "none"), label: seg ? seg.name : "", seg });
+      }
+    }
+    return slots;
+  }
+
+  // 從 startIdx 往後數,還有幾格可以劃給這次排入的活動(碰到鎖定時段或
+  // 別的活動就停下;excludeStart 是正在編輯的活動自己的 start,讓它自己
+  // 原本佔的格子不會擋到自己)
+  function computeMaxUnitsFrom(startIdx, excludeStart) {
+    const info = computeDaySlotInfo();
+    let n = 0;
+    for (let i = startIdx; i < DAY_SLOT_COUNT; i++) {
+      const s = info[i];
+      if (s.type === "locked") break;
+      if (s.type === "activity" && !(excludeStart !== null && s.activity.start === excludeStart)) break;
+      n++;
+    }
+    return n;
+  }
+
+  function renderDayActivityTrack() {
+    const slots = computeDaySlotInfo();
+    dayActivityTrack.innerHTML = "";
+    dayActivityTrack.style.height = (DAY_SLOT_COUNT * DAY_ROW_PX) + "px";
+
+    let i = 0;
+    while (i < slots.length) {
+      const start = i;
+      const info = slots[i];
+      let j = i + 1;
+      while (j < slots.length && slots[j].key === info.key) j++;
+      const span = j - i;
+
+      const el = document.createElement("div");
+      el.className = "day-slot " + info.type;
+      el.style.top = (start * DAY_ROW_PX) + "px";
+      el.style.height = (span * DAY_ROW_PX) + "px";
+
+      if (info.type === "locked") {
+        el.textContent = info.label;
+        el.addEventListener("click", () => {
+          dayActivityHint.textContent = "「" + info.label + "」是鎖定的固定時段,請到「管理時段」調整。";
+        });
+      } else if (info.type === "activity") {
+        el.style.background = info.color;
+        el.textContent = info.label;
+        el.addEventListener("click", () => openDayActivityEditor(start, info.activity));
+      } else {
+        el.textContent = span * DAY_ROW_PX >= 18 ? info.label : "";
+        el.addEventListener("click", (ev) => {
+          const offsetY = ev.offsetY != null ? ev.offsetY : 0;
+          const clickedIdx = Math.min(j - 1, start + Math.floor(offsetY / DAY_ROW_PX));
+          openDayActivityEditor(clickedIdx, null);
+        });
+      }
+      dayActivityTrack.appendChild(el);
+      i = j;
+    }
+  }
+
+  function openDayActivityEditor(startIdx, existingActivity) {
+    dayEditingStart = existingActivity ? existingActivity.start : null;
+    daySelectedStart = existingActivity ? existingActivity.start : startIdx * DAY_SLOT_HOURS;
+    dayActivityErr.style.display = "none";
+    dayActivityHint.textContent = "";
+    dayActivityEditor.hidden = false;
+    dayActivityRemoveBtn.hidden = !existingActivity;
+
+    const existingUnits = existingActivity ? Math.round((existingActivity.end - existingActivity.start) / DAY_SLOT_HOURS) : 0;
+    const anchorIdx = Math.round(daySelectedStart / DAY_SLOT_HOURS);
+    const maxUnits = Math.max(computeMaxUnitsFrom(anchorIdx, dayEditingStart), existingUnits, 1);
+
+    dayActivityDur.innerHTML = "";
+    for (let d = 1; d <= maxUnits; d++) {
+      const opt = document.createElement("option");
+      opt.value = d;
+      opt.textContent = durLabel(d);
+      dayActivityDur.appendChild(opt);
+    }
+    dayActivityDur.value = existingActivity ? existingUnits : 1;
+    dayActivityName.value = existingActivity ? existingActivity.name : "";
+    dayActivityColor.value = existingActivity ? existingActivity.color : "#4cc2ff";
+    dayActivityEditorTitle.textContent = hourLabelShort(daySelectedStart) + " 開始 · 最多可排 " + durLabel(maxUnits);
+  }
+
+  function closeDayActivityEditor() {
+    dayActivityEditor.hidden = true;
+    dayEditingStart = null;
+    daySelectedStart = null;
+  }
+
+  document.getElementById("dayActivityAddBtn").addEventListener("click", () => {
+    const name = dayActivityName.value.trim();
+    if (!name) {
+      dayActivityErr.textContent = "先輸入活動名稱";
+      dayActivityErr.style.display = "block";
+      return;
+    }
+    const units = Number(dayActivityDur.value);
+    const list = getTodayActivities();
+    if (dayEditingStart !== null) {
+      const idx = list.findIndex((a) => a.start === dayEditingStart);
+      if (idx !== -1) list.splice(idx, 1);
+    }
+    list.push({
+      start: daySelectedStart,
+      end: daySelectedStart + units * DAY_SLOT_HOURS,
+      name,
+      color: dayActivityColor.value,
+    });
+    saveDayActivities();
+    closeDayActivityEditor();
+    renderZonesAndLegend();
+    renderTrackTicks();
+    tick();
+    showToast("已排入「" + name + "」");
+  });
+
+  dayActivityRemoveBtn.addEventListener("click", () => {
+    if (dayEditingStart === null) return;
+    const list = getTodayActivities();
+    const idx = list.findIndex((a) => a.start === dayEditingStart);
+    if (idx !== -1) list.splice(idx, 1);
+    saveDayActivities();
+    closeDayActivityEditor();
+    renderZonesAndLegend();
+    renderTrackTicks();
+    tick();
+  });
+
+  document.getElementById("dayActivityCancelBtn").addEventListener("click", closeDayActivityEditor);
 
   // ===== 範本管理 =====
   const templateSelect = document.getElementById("templateSelect");
@@ -2873,7 +3171,7 @@
   // =====================================================================
   //  設定備份 / 還原
   //  匯出/匯入 localStorage 裡所有 myClock_ 開頭的 key(範本、版面、
-  //  底框偏好、番茄鐘/護眼設定、每週排程、圖片面板中繼資料……)。
+  //  底框偏好、番茄鐘/護眼設定、每週排程、今日活動、圖片面板中繼資料……)。
   //  刻意不含圖片面板的圖片本體(那存在 IndexedDB) —— 備份檔案保持
   //  小、也不用處理圖片跨瀏覽器搬移;還原後圖片面板會變成「找不到
   //  圖片」的既有錯誤狀態,可以直接點「重新選擇圖片」補回去。
@@ -2973,6 +3271,7 @@
   loadState();
   loadWeekSchedule();
   loadTemplateOverride();
+  loadDayActivities();
   applyTemplateForToday(false);      // 依今天星期 / 手動覆蓋決定 activeTemplateId
   lastScheduleDate = todayStr();
   initCollapsibleSections();
