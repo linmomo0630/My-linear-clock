@@ -338,6 +338,25 @@
   }
   #settingsDrawer.open { transform: translateX(0); }
 
+  /* ===== 今日活動彈出視窗(置中,跟側邊抽屜分開)===== */
+  #dayActivityModalOverlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 220;
+  }
+  #dayActivityModalOverlay.open { opacity: 1; pointer-events: auto; }
+  #dayActivityModal {
+    position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%, -48%);
+    width: min(92vw, 420px); max-height: 82vh; overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 20px; z-index: 221;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+  }
+  #dayActivityModal.open { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%); }
+
+  .day-activity-time { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: var(--muted); flex-shrink: 0; }
+
   .drawer-header {
     display: flex;
     justify-content: space-between;
@@ -760,6 +779,18 @@
         </div>
       </div>
 
+      <!-- ===== 今日活動面板(摘要;完整選擇器在彈出視窗裡)===== -->
+      <div class="widget" id="widget-dayActivities" data-widget="dayActivities">
+        <div class="widget-handle">⠿⠿ 今日活動</div>
+        <div class="widget-body">
+          <div class="list-header">
+            <h3>今日活動</h3>
+          </div>
+          <ul id="dayActivitySummaryList" class="item-list"></ul>
+          <button class="btn full" id="openDayActivityModalBtn" style="margin-top:auto;">+ 管理今日活動</button>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -836,6 +867,10 @@
         <label for="cardToggle-eyecare">護眼提醒顯示底框</label>
         <input type="checkbox" id="cardToggle-eyecare" data-widget="eyecare" />
       </div>
+      <div class="drawer-row">
+        <label for="cardToggle-dayActivities">今日活動顯示底框</label>
+        <input type="checkbox" id="cardToggle-dayActivities" data-widget="dayActivities" />
+      </div>
       <div id="imgCardToggleList"></div>
     </div>
 
@@ -881,27 +916,6 @@
       <h3>管理時段 · <span id="editingTemplateName">平日</span></h3>
       <div id="zoneList"></div>
       <button class="btn" id="addZoneBtn">+ 新增時段</button>
-    </div>
-
-    <div class="drawer-section" data-section="dayActivities">
-      <h3>今日活動</h3>
-      <p class="drawer-sub">先在上面「管理時段」把課程等固定時段勾選鎖定;沒鎖定的空檔可以在這裡點選,填入今天的活動與長度,只影響今天,不會改到範本。</p>
-      <div id="dayActivityTrack" class="day-activity-track"></div>
-      <p class="drawer-sub" id="dayActivityHint" style="min-height:16px;"></p>
-      <div id="dayActivityEditor" class="day-activity-editor" hidden>
-        <p class="drawer-sub" id="dayActivityEditorTitle"></p>
-        <div class="zone-row">
-          <input type="text" id="dayActivityName" placeholder="鋼琴練習" />
-          <select id="dayActivityDur"></select>
-          <input type="color" id="dayActivityColor" value="#4cc2ff" />
-        </div>
-        <p class="drawer-sub" id="dayActivityErr" style="display:none;color:#f87171;"></p>
-        <div class="template-controls">
-          <button class="btn" id="dayActivityAddBtn">加入</button>
-          <button class="btn danger" id="dayActivityRemoveBtn" hidden>移除</button>
-          <button class="btn" id="dayActivityCancelBtn">取消</button>
-        </div>
-      </div>
     </div>
 
     <div class="drawer-section" data-section="schedule">
@@ -1004,6 +1018,32 @@
     </div>
   </div>
 
+  <!-- ===== 今日活動彈出視窗 ===== -->
+  <div id="dayActivityModalOverlay"></div>
+  <div id="dayActivityModal">
+    <div class="drawer-header">
+      <h2>今日活動</h2>
+      <button id="closeDayActivityModal" aria-label="關閉今日活動">✕</button>
+    </div>
+    <p class="drawer-sub">先在「管理時段」把課程等固定時段勾選鎖定;沒鎖定的空檔可以在這裡點選,填入今天的活動與長度,只影響今天,不會改到範本。</p>
+    <div id="dayActivityTrack" class="day-activity-track"></div>
+    <p class="drawer-sub" id="dayActivityHint" style="min-height:16px;"></p>
+    <div id="dayActivityEditor" class="day-activity-editor" hidden>
+      <p class="drawer-sub" id="dayActivityEditorTitle"></p>
+      <div class="zone-row">
+        <input type="text" id="dayActivityName" placeholder="鋼琴練習" />
+        <select id="dayActivityDur"></select>
+        <input type="color" id="dayActivityColor" value="#4cc2ff" />
+      </div>
+      <p class="drawer-sub" id="dayActivityErr" style="display:none;color:#f87171;"></p>
+      <div class="template-controls">
+        <button class="btn" id="dayActivityAddBtn">加入</button>
+        <button class="btn danger" id="dayActivityRemoveBtn" hidden>移除</button>
+        <button class="btn" id="dayActivityCancelBtn">取消</button>
+      </div>
+    </div>
+  </div>
+
 <script>
   // ===== 預設值 =====
   // 時段以小時數記錄 { start, end }。end 可小於 start,代表跨越午夜;
@@ -1045,6 +1085,7 @@
     eyecare:      { x: 948, y: 362, w: 252, h: 210 },
     todo:  { x: 24,  y: 348, w: 300, h: 284 },
     tasks: { x: 348, y: 348, w: 300, h: 284 },
+    dayActivities: { x: 24, y: 656, w: 300, h: 220 },
   };
 
   const LS_TEMPLATES = "myClock_templates";
@@ -1086,6 +1127,7 @@
     statElapsed: true, statRemaining: true, statCurrent: true, statNext: true,
     todo: true, tasks: true,
     pomodoro: true, eyecare: true,
+    dayActivities: true,
   };
 
   let templates = [];
@@ -1192,6 +1234,7 @@
       legend.appendChild(item);
     });
     renderDayActivityTrack();
+    renderDayActivitySummary();
   }
 
   function renderTrackTicks() {
@@ -1636,6 +1679,49 @@
   });
 
   document.getElementById("dayActivityCancelBtn").addEventListener("click", closeDayActivityEditor);
+
+  // ===== 今日活動面板摘要 + 彈出視窗開關 =====
+  const dayActivitySummaryList = document.getElementById("dayActivitySummaryList");
+
+  function renderDayActivitySummary() {
+    const list = [...getTodayActivities()].sort((a, b) => a.start - b.start);
+    dayActivitySummaryList.innerHTML = "";
+    if (list.length === 0) {
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="item-title" style="color:var(--muted);">今天還沒排活動</span>`;
+      dayActivitySummaryList.appendChild(li);
+      return;
+    }
+    list.forEach((a) => {
+      const li = document.createElement("li");
+      const time = document.createElement("span");
+      time.className = "day-activity-time";
+      time.textContent = hourLabelShort(a.start) + "–" + hourLabelShort(a.end);
+      const title = document.createElement("span");
+      title.className = "item-title";
+      title.textContent = a.name;
+      li.appendChild(time);
+      li.appendChild(title);
+      dayActivitySummaryList.appendChild(li);
+    });
+  }
+
+  const dayActivityModalOverlay = document.getElementById("dayActivityModalOverlay");
+  const dayActivityModal = document.getElementById("dayActivityModal");
+
+  function openDayActivityModal() {
+    renderDayActivityTrack();
+    dayActivityModalOverlay.classList.add("open");
+    dayActivityModal.classList.add("open");
+  }
+  function closeDayActivityModalFn() {
+    dayActivityModalOverlay.classList.remove("open");
+    dayActivityModal.classList.remove("open");
+    closeDayActivityEditor();
+  }
+  document.getElementById("openDayActivityModalBtn").addEventListener("click", openDayActivityModal);
+  document.getElementById("closeDayActivityModal").addEventListener("click", closeDayActivityModalFn);
+  dayActivityModalOverlay.addEventListener("click", closeDayActivityModalFn);
 
   // ===== 範本管理 =====
   const templateSelect = document.getElementById("templateSelect");
